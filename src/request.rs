@@ -269,6 +269,31 @@ impl<'a, Sc: Scope<'a>, S, R> Request<'a, Sc, S, R> {
         scope.unregister();
         (request, scope, send_data, recv_data)
     }
+
+    /// Waits for completion of the request and relinquishes ownership of its send and receive
+    /// buffers.
+    pub fn wait_data(self) -> (S, R, Status) {
+        let (mut request, _, send_data, recv_data) = unsafe { self.into_raw_data() };
+
+        let mut status: MPI_Status = unsafe { mem::uninitialized() };
+        raw::wait(&mut request, Some(&mut status));
+
+        (send_data, recv_data, Status::from_raw(status))
+    }
+
+    /// Waits for completion of the request and relinquishes ownership of its receive buffer.
+    pub fn wait_send(self) -> (S, Status) {
+        let (send_data, _, status) = self.wait_data();
+
+        (send_data, status)
+    }
+
+    /// Waits for completion of the request and relinquishes ownership of its receive buffer.
+    pub fn wait_recv(self) -> (R, Status) {
+        let (_, recv_data, status) = self.wait_data();
+
+        (recv_data, status)
+    }
 }
 
 impl<'a, Sc: Scope<'a>, S, R> AsyncRequest<'a, Sc> for Request<'a, Sc, S, R> {
