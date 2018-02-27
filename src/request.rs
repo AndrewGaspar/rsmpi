@@ -229,6 +229,19 @@ impl<'a, Sc: Scope<'a>> Request<'a, Sc> {
 }
 
 impl<'a, Sc: Scope<'a>, S, R> Request<'a, Sc, S, R> {
+    /// Stops tracking the request's data buffers. The lifetime of the buffers must exceed the
+    /// lifetime of the attached scope.
+    pub fn forget_data(self) -> Request<'a, Sc>
+    where
+        S: 'a,
+        R: 'a,
+    {
+        unsafe {
+            let (request, scope, _, _) = self.into_raw_data();
+            Request::from_raw(request, scope)
+        }
+    }
+
     /// Construct a request object from the raw MPI type and its associated data buffer.
     ///
     /// # Requirements

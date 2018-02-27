@@ -28,6 +28,7 @@ fn main() {
                 world
                     .process_at_rank(target as i32)
                     .immediate_send(scope, &rank)
+                    .forget_data()
             })
             .collect_requests(scope);
 
@@ -39,6 +40,7 @@ fn main() {
                 world
                     .process_at_rank(target as i32)
                     .immediate_receive_into(scope, rank)
+                    .forget_data()
             })
             .collect_requests(scope);
 
