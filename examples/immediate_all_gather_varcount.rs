@@ -26,9 +26,9 @@ fn main() {
 
     let mut buf = vec![0; (size * (size - 1) / 2) as usize];
     {
-        let partition = PartitionMut::new(&mut buf[..], counts, &displs[..]);
+        let mut partition = PartitionMut::new(&mut buf[..], counts, &displs[..]);
         mpi::request::scope(|scope| {
-            let req = world.immediate_all_gather_varcount_into(scope, &msg[..], partition);
+            let req = world.immediate_all_gather_varcount_into(scope, &msg[..], &mut partition);
             req.wait();
         });
     }

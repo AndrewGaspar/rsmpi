@@ -1272,7 +1272,7 @@ where
     }
 }
 
-unsafe impl<B, C, D> AsDatatype for Partition<B, C, D>
+unsafe impl<'a, B, C, D> AsDatatype for &'a Partition<B, C, D>
 where
     B: ReadBuffer,
     C: Borrow<[Count]>,
@@ -1284,7 +1284,7 @@ where
     }
 }
 
-unsafe impl<B, C, D> Pointer for Partition<B, C, D>
+unsafe impl<'a, B, C, D> Pointer for &'a Partition<B, C, D>
 where
     B: ReadBuffer,
     C: Borrow<[Count]>,
@@ -1295,7 +1295,7 @@ where
     }
 }
 
-impl<B, C, D> Partitioned for Partition<B, C, D>
+impl<'a, B, C, D> Partitioned for &'a Partition<B, C, D>
 where
     B: ReadBuffer,
     C: Borrow<[Count]>,
@@ -1309,7 +1309,7 @@ where
     }
 }
 
-impl<B, C, D> PartitionedBuffer for Partition<B, C, D>
+impl<'a, B, C, D> PartitionedBuffer for &'a Partition<B, C, D>
 where
     B: ReadBuffer,
     C: Borrow<[Count]>,
@@ -1354,7 +1354,7 @@ where
     }
 }
 
-unsafe impl<B, C, D> AsDatatype for PartitionMut<B, C, D>
+unsafe impl<'a, B, C, D> AsDatatype for &'a mut PartitionMut<B, C, D>
 where
     B: WriteBuffer,
     C: Borrow<[Count]>,
@@ -1366,7 +1366,7 @@ where
     }
 }
 
-unsafe impl<B, C, D> PointerMut for PartitionMut<B, C, D>
+unsafe impl<'a, B, C, D> PointerMut for &'a mut PartitionMut<B, C, D>
 where
     B: WriteBuffer,
     C: Borrow<[Count]>,
@@ -1377,7 +1377,7 @@ where
     }
 }
 
-impl<B, C, D> Partitioned for PartitionMut<B, C, D>
+impl<'a, B, C, D> Partitioned for &'a mut PartitionMut<B, C, D>
 where
     B: WriteBuffer,
     C: Borrow<[Count]>,
@@ -1391,7 +1391,7 @@ where
     }
 }
 
-impl<B, C, D> PartitionedBufferMut for PartitionMut<B, C, D>
+impl<'a, B, C, D> PartitionedBufferMut for &'a mut PartitionMut<B, C, D>
 where
     B: WriteBuffer,
     C: Borrow<[Count]>,

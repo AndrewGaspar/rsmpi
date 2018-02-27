@@ -30,8 +30,8 @@ fn main() {
 
         let mut buf = vec![0; (size * (size - 1) / 2) as usize];
         {
-            let partition = PartitionMut::new(&mut buf[..], counts, &displs[..]);
-            root_process.gather_varcount_into_root(&msg[..], partition);
+            let mut partition = PartitionMut::new(&mut buf[..], counts, &displs[..]);
+            root_process.gather_varcount_into_root(&msg[..], &mut partition);
         }
 
         assert!(

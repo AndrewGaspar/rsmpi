@@ -29,7 +29,7 @@ fn main() {
             })
             .collect();
         let partition = Partition::new(&msg[..], counts, &displs[..]);
-        root_process.scatter_varcount_into_root(partition, &mut buf[..]);
+        root_process.scatter_varcount_into_root(&partition, &mut buf[..]);
     } else {
         root_process.scatter_varcount_into(&mut buf[..]);
     }
