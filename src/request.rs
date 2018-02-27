@@ -28,9 +28,12 @@
 //!   - Cancellation, `MPI_Test_cancelled()`
 
 use std::cell::Cell;
-use std::mem;
+use std::mem::{forget, replace, uninitialized};
+use std::ptr::drop_in_place;
 use std::marker::PhantomData;
 use std::slice;
+
+use conv::ConvUtil;
 
 use ffi;
 use ffi::{MPI_Request, MPI_Status};
@@ -79,7 +82,7 @@ pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
     ///
     /// 3.7.3
     fn wait(self) -> Status {
-        let mut status: MPI_Status = unsafe { mem::uninitialized() };
+        let mut status: MPI_Status = unsafe { uninitialized() };
         raw::wait(unsafe { &mut self.into_raw().0 }, Some(&mut status));
         Status::from_raw(status)
     }
@@ -140,10 +143,10 @@ pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
     }
 
     /// Reduce the scope of a request.
-    fn shrink_scope_to<'b, S2>(self, scope: S2) -> Request<'b, S2>
+    fn shrink_scope_to<'b, Sc2>(self, scope: Sc2) -> Request<'b, Sc2>
     where
         'a: 'b,
-        S2: Scope<'b>,
+        Sc2: Scope<'b>,
     {
         unsafe {
             let (request, _) = self.into_raw();
@@ -273,12 +276,12 @@ impl<'a, Sc: Scope<'a>, S, R> Request<'a, Sc, S, R> {
     ///
     /// This is unsafe because the request may outlive its associated buffers.
     pub unsafe fn into_raw_data(mut self) -> (MPI_Request, Sc, S, R) {
-        let request = mem::replace(&mut self.request, mem::uninitialized());
-        let scope = mem::replace(&mut self.scope, mem::uninitialized());
-        let send_data = mem::replace(&mut self.send_data, mem::uninitialized());
-        let recv_data = mem::replace(&mut self.recv_data, mem::uninitialized());
-        drop(mem::replace(&mut self.phantom, mem::uninitialized()));
-        mem::forget(self);
+        let request = replace(&mut self.request, uninitialized());
+        let scope = replace(&mut self.scope, uninitialized());
+        let send_data = replace(&mut self.send_data, uninitialized());
+        let recv_data = replace(&mut self.recv_data, uninitialized());
+        drop(replace(&mut self.phantom, uninitialized()));
+        forget(self);
         scope.unregister();
         (request, scope, send_data, recv_data)
     }
@@ -288,7 +291,7 @@ impl<'a, Sc: Scope<'a>, S, R> Request<'a, Sc, S, R> {
     pub fn wait_data(self) -> (S, R, Status) {
         let (mut request, _, send_data, recv_data) = unsafe { self.into_raw_data() };
 
-        let mut status: MPI_Status = unsafe { mem::uninitialized() };
+        let mut status: MPI_Status = unsafe { uninitialized() };
         raw::wait(&mut request, Some(&mut status));
 
         (send_data, recv_data, Status::from_raw(status))
@@ -311,28 +314,31 @@ impl<'a, Sc: Scope<'a>, S, R> Request<'a, Sc, S, R> {
 
 impl<'a, Sc: Scope<'a>, S, R> AsyncRequest<'a, Sc> for Request<'a, Sc, S, R> {
     unsafe fn into_raw(mut self) -> (MPI_Request, Sc) {
-        let request = mem::replace(&mut self.request, mem::uninitialized());
-        let scope = mem::replace(&mut self.scope, mem::uninitialized());
-        drop(mem::replace(&mut self.send_data, mem::uninitialized()));
-        drop(mem::replace(&mut self.recv_data, mem::uninitialized()));
-        drop(mem::replace(&mut self.phantom, mem::uninitialized()));
-        mem::forget(self);
+        let request = replace(&mut self.request, uninitialized());
+        let scope = replace(&mut self.scope, uninitialized());
+        drop(replace(&mut self.send_data, uninitialized()));
+        drop(replace(&mut self.recv_data, uninitialized()));
+        drop(replace(&mut self.phantom, uninitialized()));
+        forget(self);
         scope.unregister();
         (request, scope)
     }
 }
 
 /// Collects an iterator of `Request` objects into a `RequestCollection` object
-pub trait CollectRequests<'a, Sc: Scope<'a>>
-    : IntoIterator<Item = Request<'a, Sc>> {
+pub trait CollectRequests<'a, Sc: Scope<'a>, S, R>
+    : IntoIterator<Item = Request<'a, Sc, S, R>> {
     /// Consumes and converts an iterator of `Requst` objects into a `RequestCollection` object.
-    fn collect_requests<'b, S2: Scope<'b>>(self, scope: S2) -> RequestCollection<'b, S2>
+    fn collect_requests<'b, Sc2: Scope<'b>>(self, scope: Sc2) -> RequestCollection<'b, Sc2, S, R>
     where
         'a: 'b;
 }
 
-impl<'a, Sc: Scope<'a>, T: IntoIterator<Item = Request<'a, Sc>>> CollectRequests<'a, Sc> for T {
-    fn collect_requests<'b, S2: Scope<'b>>(self, scope: S2) -> RequestCollection<'b, S2>
+impl<'a, Sc: Scope<'a>, S, R, T> CollectRequests<'a, Sc, S, R> for T
+where
+    T: IntoIterator<Item = Request<'a, Sc, S, R>>,
+{
+    fn collect_requests<'b, Sc2: Scope<'b>>(self, scope: Sc2) -> RequestCollection<'b, Sc2, S, R>
     where
         'a: 'b,
     {
@@ -342,26 +348,26 @@ impl<'a, Sc: Scope<'a>, T: IntoIterator<Item = Request<'a, Sc>>> CollectRequests
 
 /// Result type for `RequestCollection::test_any`.
 #[derive(Clone, Copy)]
-pub enum TestAny {
+pub enum TestAny<S, R> {
     /// Indicates that there are no active requests in the `requests` slice.
     NoneActive,
     /// Indicates that, while there are active requests in the `requests` slice, none of them were
     /// completed.
     NoneComplete,
     /// Indicates which request in the `requests` slice was completed.
-    Completed(i32, Status),
+    Completed(i32, S, R, Status),
 }
 
 /// Result type for `RequestCollection::test_any_without_status`.
 #[derive(Clone, Copy)]
-pub enum TestAnyWithoutStatus {
+pub enum TestAnyWithoutStatus<S, R> {
     /// Indicates that there are no active requests in the `requests` slice.
     NoneActive,
     /// Indicates that, while there are active requests in the `requests` slice, none of them were
     /// completed.
     NoneComplete,
     /// Indicates which request in the `requests` slice was completed.
-    Completed(i32),
+    Completed(i32, S, R),
 }
 
 /// A collection of request objects for a non-blocking operation registered with a `Scope` of
@@ -385,13 +391,33 @@ pub enum TestAnyWithoutStatus {
 /// 3.7.5
 #[must_use]
 #[derive(Debug)]
-pub struct RequestCollection<'a, Sc: Scope<'a> = StaticScope> {
-    // Tracks the number of request handles in `requests` are active.
+pub struct RequestCollection<'a, Sc: Scope<'a> = StaticScope, S = (), R = ()> {
+    /// Tracks the number of request handles in `requests` are active.
     outstanding: usize,
 
-    // NOTE: Once Rust supports some sort of "null pointer optimization" for custom types, this
-    // could become Vec<Option<MPI_Request>>.
+    /// NOTE: Once Rust supports some sort of "null pointer optimization" for custom types, this
+    /// could become essentially `Vec<Option<MPI_Request>>`.
     requests: Vec<MPI_Request>,
+
+    /// `send_data[i]` contains the send buffer associated with `requests[i]`
+    ///
+    /// `send_data` is not used like a typical Vec - so as to not impose `Default` requirements
+    /// on `S` and not have to wrap `S` in `Option`, we manage the uninitialized memory in
+    /// accordance with the active state of the associated request. This also allows no memory to be
+    /// allocated for `send_data` when `S = ()`.
+    ///
+    /// Therefore, `send_data.len()` will always be `0`.
+    send_data: Vec<S>,
+
+    /// `recv_data[i]` contains the send buffer associated with `requests[i]`
+    ///
+    /// `recv_data` is not used like a typical Vec - so as to not impose `Default` requirements
+    /// on `R` and not have to wrap `R` in `Option`, we manage the uninitialized memory in
+    /// accordance with the active state of the associated request. This also allows no memory to be
+    /// allocated for `recv_data` when `R = ()`.
+    ///
+    /// Therefore, `recv_data.len()` will always be `0`.
+    recv_data: Vec<R>,
 
     // The scope attached to the RequestCollection. All requests in the collection must be
     // deallocated when this scope exits.
@@ -399,7 +425,7 @@ pub struct RequestCollection<'a, Sc: Scope<'a> = StaticScope> {
     phantom: PhantomData<Cell<&'a ()>>,
 }
 
-impl<'a, Sc: Scope<'a>> Drop for RequestCollection<'a, Sc> {
+impl<'a, Sc: Scope<'a>, S, R> Drop for RequestCollection<'a, Sc, S, R> {
     fn drop(&mut self) {
         if self.outstanding != 0 {
             panic!("RequestCollection was dropped with outstanding requests not completed.");
@@ -407,19 +433,52 @@ impl<'a, Sc: Scope<'a>> Drop for RequestCollection<'a, Sc> {
     }
 }
 
-impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
+impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
     /// Constructs a `RequestCollection` from a Vec of `MPI_Request` handles and a scope object.
     /// `requests` are allowed to be null, but they must not be persistent requests.
-    pub fn from_raw(requests: Vec<MPI_Request>, scope: Sc) -> Self {
+    pub fn from_raw(
+        requests: Vec<MPI_Request>,
+        mut send_data: Vec<S>,
+        mut recv_data: Vec<R>,
+        scope: Sc,
+    ) -> Self {
+        assert_eq!(
+            requests.len(),
+            send_data.len(),
+            "The send_data and requests arrays must be the same size."
+        );
+        assert_eq!(
+            requests.len(),
+            recv_data.len(),
+            "The recv_data and requests arrays must be the same size."
+        );
+
         let outstanding = requests
             .iter()
             .filter(|&request| !request.is_handle_null())
             .count();
 
         scope.register_many(outstanding);
+
+        // The data is treated as uninitialized data. It has to be manually dropped.
+        unsafe {
+            send_data.set_len(0);
+            recv_data.set_len(0);
+
+            // explicitly drop the send_data and recv_data for the null request handles
+            for i in 0..requests.len() {
+                if requests[i].is_handle_null() {
+                    drop_in_place(&mut send_data[i]);
+                    drop_in_place(&mut recv_data[i]);
+                }
+            }
+        }
+
         Self {
             outstanding: outstanding,
             requests: requests,
+            send_data: send_data,
+            recv_data: recv_data,
             scope: scope,
             phantom: Default::default(),
         }
@@ -432,9 +491,11 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
 
     /// Constructs a new, empty `RequestCollection` with reserved space for `capacity` requests.
     pub fn with_capacity(scope: Sc, capacity: usize) -> Self {
-        RequestCollection {
+        Self {
             outstanding: 0,
             requests: Vec::with_capacity(capacity),
+            send_data: Vec::with_capacity(capacity),
+            recv_data: Vec::with_capacity(capacity),
             scope: scope,
             phantom: Default::default(),
         }
@@ -442,20 +503,15 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
 
     /// Converts an iterator of request objects to a `RequestCollection`. The scope of each request
     /// must be larger than or equal of the new `RequestCollection`.
-    fn from_request_iter<'b: 'a, T, S2: Scope<'b>>(iter: T, scope: Sc) -> Self
+    fn from_request_iter<'b: 'a, T, Sc2: Scope<'b>>(iter: T, scope: Sc) -> Self
     where
-        T: IntoIterator<Item = Request<'b, S2>>,
+        T: IntoIterator<Item = Request<'b, Sc2, S, R>>,
     {
         let iter = iter.into_iter();
 
-        let (lbound, ubound) = iter.size_hint();
-        let capacity = if let Some(ubound) = ubound {
-            ubound
-        } else {
-            lbound
-        };
+        let (lbound, _) = iter.size_hint();
 
-        let mut collection = RequestCollection::with_capacity(scope, capacity);
+        let mut collection = RequestCollection::with_capacity(scope, lbound);
 
         for request in iter {
             collection.push(request);
@@ -467,28 +523,45 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     /// Pushes a new request into the collection. The request is removed from its previous scope and
     /// attached to the new scope. Therefore, the request's scope must be greater than or equal to
     /// the collection's scope.
-    pub fn push<'b: 'a, S2: Scope<'b>>(&mut self, request: Request<'b, S2>) {
+    pub fn push<'b: 'a, Sc2: Scope<'b>>(&mut self, request: Request<'b, Sc2, S, R>) {
         unsafe {
-            let (request, _) = request.into_raw();
+            let (request, _, send_data, recv_data) = request.into_raw_data();
             assert!(
                 !request.is_handle_null(),
                 "Cannot add NULL requests to a RequestCollection."
             );
+
+            self.check_invariants();
+
+            let idx = self.requests.len();
+
             self.requests.push(request);
+
+            if self.requests.capacity() > self.send_data.capacity() {
+                let grow_by = self.requests.capacity() - self.send_data.capacity();
+
+                self.send_data.reserve(grow_by);
+                self.recv_data.reserve(grow_by);
+            }
+
+            forget(replace(self.send_data.get_unchecked_mut(idx), send_data));
+            forget(replace(self.recv_data.get_unchecked_mut(idx), recv_data));
+
+            self.check_invariants();
 
             self.increase_outstanding(1);
         }
     }
 
     /// Reduce the scope of a request.
-    pub fn shrink_scope_to<'b, S2>(self, scope: S2) -> RequestCollection<'b, S2>
+    pub fn shrink_scope_to<'b, Sc2>(self, scope: Sc2) -> RequestCollection<'b, Sc2, S, R>
     where
         'a: 'b,
-        S2: Scope<'b>,
+        Sc2: Scope<'b>,
     {
         unsafe {
-            let (requests, _) = self.into_raw();
-            RequestCollection::from_raw(requests, scope)
+            let (requests, send_data, recv_data, _) = self.into_raw();
+            RequestCollection::from_raw(requests, send_data, recv_data, scope)
         }
     }
 
@@ -498,6 +571,32 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
             self.outstanding == self.requests.iter().filter(|&r| !r.is_handle_null()).count(),
             "Internal rsmpi error: the number of outstanding requests in the RequestCollection has \
             fallen out of sync with the tracking count.");
+    }
+
+    fn check_invariants(&self) {
+        debug_assert!(
+            self.send_data.is_empty(),
+            "Internal rsmpi error: The send_data array is improperly initialized."
+        );
+        debug_assert!(
+            self.recv_data.is_empty(),
+            "Internal rsmpi error: The recv_data array is improperly initialized."
+        );
+
+        // While `send_data` and `recv_data` are generally held to the same capacity as
+        // `requests`, zero-sized types (e.g. ()) may result in capacities that are in excess of
+        // the requested capacity.
+        //
+        // Therefore just verify that the capacity of `send_data` and `recv_data` are at /least/ as
+        // large as `requests`.
+        debug_assert!(
+            self.send_data.capacity() >= self.requests.len(),
+            "Internal rsmpi error: The send_data array wasn't grown correctly."
+        );
+        debug_assert!(
+            self.recv_data.capacity() >= self.requests.len(),
+            "Internal rsmpi error: The recv_data array wasn't grown correctly."
+        );
     }
 
     fn increase_outstanding(&mut self, new_outstanding: usize) {
@@ -529,6 +628,25 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
         );
     }
 
+    /// Called after a request is completed to retrieve the `send_data` and `recv_data` associated
+    /// with the completed request.
+    unsafe fn complete_request(&mut self, idx: i32) -> (S, R) {
+        self.check_null(idx);
+
+        (
+            replace(
+                self.send_data
+                    .get_unchecked_mut(idx.value_as::<usize>().unwrap()),
+                uninitialized(),
+            ),
+            replace(
+                self.recv_data
+                    .get_unchecked_mut(idx.value_as::<usize>().unwrap()),
+                uninitialized(),
+            ),
+        )
+    }
+
     /// Called after a `wait_some` operation to validate that the requests at indices are now null
     /// in DEBUG builds. This is to smoke out if the user is sneaking persistent requests into the
     /// collection.
@@ -541,6 +659,39 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
         );
     }
 
+    /// Called after a `wait_some` or `test_some` operation to retrieve the data associated with
+    /// each completed request.
+    unsafe fn complete_some_requests(
+        &mut self,
+        indices: &[i32],
+        mut send_data: Option<&mut Vec<S>>,
+        mut recv_data: Option<&mut Vec<R>>,
+    ) {
+        self.check_some_null(indices);
+
+        for &idx in indices {
+            let idx_send_data = replace(
+                self.send_data
+                    .get_unchecked_mut(idx.value_as::<usize>().unwrap()),
+                uninitialized(),
+            );
+
+            let idx_recv_data = replace(
+                self.recv_data
+                    .get_unchecked_mut(idx.value_as::<usize>().unwrap()),
+                uninitialized(),
+            );
+
+            if let Some(ref mut send_data) = send_data {
+                send_data.push(idx_send_data);
+            }
+
+            if let Some(ref mut recv_data) = recv_data {
+                recv_data.push(idx_recv_data);
+            }
+        }
+    }
+
     /// Called after a `wait_all` operations to validate that all requests are now null in DEBUG
     /// builds. This is to smoke out if the user is sneaking persistent requests into the
     /// collection.
@@ -549,6 +700,34 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
             self.requests.iter().all(|r| r.is_handle_null()),
             "Persistent requests are not allowed in RequestCollection."
         );
+    }
+
+    /// Called after a `wait_all` or `test_all` operation to retrieve the data associated with
+    /// each completed request.
+    unsafe fn complete_all_requests(
+        &mut self,
+        indices: Option<Vec<i32>>,
+        mut send_data: Option<&mut Vec<S>>,
+        mut recv_data: Option<&mut Vec<R>>,
+    ) {
+        if let Some(ref indices) = indices {
+            self.complete_some_requests(&indices[..], send_data, recv_data);
+            return;
+        }
+
+        self.check_all_null();
+
+        for i in 0..self.requests.len().value_as().unwrap() {
+            let (i_send_data, i_recv_data) = self.complete_request(i);
+
+            if let Some(ref mut send_data) = send_data {
+                send_data.push(i_send_data);
+            }
+
+            if let Some(ref mut recv_data) = recv_data {
+                recv_data.push(i_recv_data);
+            }
+        }
     }
 
     /// `outstanding` returns the number of requests in the collection that haven't been completed.
@@ -563,20 +742,23 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
 
     /// Returns the underlying array of MPI_Request objects and their attached
     /// scope.
-    pub unsafe fn into_raw(mut self) -> (Vec<MPI_Request>, Sc) {
-        let requests = mem::replace(&mut self.requests, mem::uninitialized());
-        let scope = mem::replace(&mut self.scope, mem::uninitialized());
-        let _ = mem::replace(&mut self.phantom, mem::uninitialized());
-        mem::forget(self);
+    pub unsafe fn into_raw(mut self) -> (Vec<MPI_Request>, Vec<S>, Vec<R>, Sc) {
+        let requests = replace(&mut self.requests, uninitialized());
+        let send_data = replace(&mut self.send_data, uninitialized());
+        let recv_data = replace(&mut self.recv_data, uninitialized());
+        let scope = replace(&mut self.scope, uninitialized());
+        let _ = replace(&mut self.phantom, uninitialized());
+        forget(self);
         scope.unregister();
-        (requests, scope)
+        (requests, send_data, recv_data, scope)
     }
 
     /// `shrink` removes all deallocated requests from the collection. It does not shrink the size
     /// of the underlying MPI_Request array, allowing the RequestCollection to be efficiently
     /// re-used for another set of requests without needing additional allocations.
     pub fn shrink(&mut self) {
-        self.requests.retain(|&req| !req.is_handle_null())
+        unimplemented!();
+        // self.requests.retain(|&req| !req.is_handle_null())
     }
 
     /// `wait_any` blocks until any active request in the collection completes. It returns
@@ -592,12 +774,12 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     /// # Standard section(s)
     ///
     /// 3.7.5
-    pub fn wait_any(&mut self) -> Option<(i32, Status)> {
-        let mut status: MPI_Status = unsafe { mem::uninitialized() };
+    pub fn wait_any(&mut self) -> Option<(i32, S, R, Status)> {
+        let mut status: MPI_Status = unsafe { uninitialized() };
         if let Some(idx) = raw::wait_any(&mut self.requests, Some(&mut status)) {
-            self.check_null(idx);
+            let (send_data, recv_data) = unsafe { self.complete_request(idx) };
             self.decrease_outstanding(1);
-            Some((idx, Status::from_raw(status)))
+            Some((idx, send_data, recv_data, Status::from_raw(status)))
         } else {
             self.check_outstanding();
             None
@@ -617,11 +799,11 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     /// # Standard section(s)
     ///
     /// 3.7.5
-    pub fn wait_any_without_status(&mut self) -> Option<i32> {
+    pub fn wait_any_without_status(&mut self) -> Option<(i32, S, R)> {
         if let Some(idx) = raw::wait_any(&mut self.requests, None) {
-            self.check_null(idx);
+            let (send_data, recv_data) = unsafe { self.complete_request(idx) };
             self.decrease_outstanding(1);
-            Some(idx)
+            Some((idx, send_data, recv_data))
         } else {
             self.check_outstanding();
             None
@@ -643,15 +825,15 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     /// # Standard section(s)
     ///
     /// 3.7.5
-    pub fn test_any(&mut self) -> TestAny {
-        let mut status: MPI_Status = unsafe { mem::uninitialized() };
+    pub fn test_any(&mut self) -> TestAny<S, R> {
+        let mut status: MPI_Status = unsafe { uninitialized() };
         let result = match raw::test_any(&mut self.requests, Some(&mut status)) {
             raw::TestAny::NoneActive => TestAny::NoneActive,
             raw::TestAny::NoneComplete => TestAny::NoneComplete,
             raw::TestAny::Completed(idx) => {
-                self.check_null(idx);
+                let (send_data, recv_data) = unsafe { self.complete_request(idx) };
                 self.decrease_outstanding(1);
-                TestAny::Completed(idx, Status::from_raw(status))
+                TestAny::Completed(idx, send_data, recv_data, Status::from_raw(status))
             }
         };
         self.check_outstanding();
@@ -674,18 +856,35 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     /// # Standard section(s)
     ///
     /// 3.7.5
-    pub fn test_any_without_status(&mut self) -> TestAnyWithoutStatus {
+    pub fn test_any_without_status(&mut self) -> TestAnyWithoutStatus<S, R> {
         let result = match raw::test_any(&mut self.requests, None) {
             raw::TestAny::NoneActive => TestAnyWithoutStatus::NoneActive,
             raw::TestAny::NoneComplete => TestAnyWithoutStatus::NoneComplete,
             raw::TestAny::Completed(idx) => {
-                self.check_null(idx);
+                let (send_data, recv_data) = unsafe { self.complete_request(idx) };
                 self.decrease_outstanding(1);
-                TestAnyWithoutStatus::Completed(idx)
+                TestAnyWithoutStatus::Completed(idx, send_data, recv_data)
             }
         };
         self.check_outstanding();
         result
+    }
+
+    /// Gets the index of each active request in the Vec.
+    /// Returns None if all requests are active.
+    fn get_active_requests(&self) -> Option<Vec<i32>> {
+        if self.outstanding == self.requests.len() {
+            None
+        } else {
+            Some(
+                self.requests
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, request)| !request.is_handle_null())
+                    .map(|(idx, _)| idx.value_as().unwrap())
+                    .collect(),
+            )
+        }
     }
 
     /// `wait_all_into` blocks until all requests in the collection are deallocated. Upon return,
@@ -705,9 +904,11 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
         let raw_statuses =
             unsafe { slice::from_raw_parts_mut(statuses.as_mut_ptr() as *mut _, statuses.len()) };
 
+        let active_requests = self.get_active_requests();
+
         raw::wait_all(&mut self.requests, Some(raw_statuses));
 
-        self.check_all_null();
+        unsafe { self.complete_all_requests(active_requests, None, None) };
         self.clear_outstanding();
     }
 
@@ -728,7 +929,7 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     ///
     /// 3.7.5
     pub fn wait_all(&mut self) -> Vec<Status> {
-        let mut statuses = vec![unsafe { mem::uninitialized() }; self.requests.len()];
+        let mut statuses = vec![unsafe { uninitialized() }; self.requests.len()];
         self.wait_all_into(&mut statuses[..]);
         statuses
     }
@@ -741,9 +942,11 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     ///
     /// 3.7.5
     pub fn wait_all_without_status(&mut self) {
+        let active_requests = self.get_active_requests();
+
         raw::wait_all(&mut self.requests[..], None);
 
-        self.check_all_null();
+        unsafe { self.complete_all_requests(active_requests, None, None) };
         self.clear_outstanding();
     }
 
@@ -765,8 +968,10 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
         let raw_statuses =
             unsafe { slice::from_raw_parts_mut(statuses.as_mut_ptr() as *mut _, statuses.len()) };
 
+        let active_requests = self.get_active_requests();
+
         if raw::test_all(&mut self.requests, Some(raw_statuses)) {
-            self.check_all_null();
+            unsafe { self.complete_all_requests(active_requests, None, None) };
             self.clear_outstanding();
             true
         } else {
@@ -788,7 +993,7 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     ///
     /// 3.7.5
     pub fn test_all(&mut self) -> Option<Vec<Status>> {
-        let mut statuses = vec![unsafe { mem::uninitialized() }; self.requests.len()];
+        let mut statuses = vec![unsafe { uninitialized() }; self.requests.len()];
         if self.test_all_into(&mut statuses) {
             Some(statuses)
         } else {
@@ -808,8 +1013,10 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     ///
     /// 3.7.5
     pub fn test_all_without_status(&mut self) -> bool {
+        let active_requests = self.get_active_requests();
+
         if raw::test_all(&mut self.requests, None) {
-            self.check_all_null();
+            unsafe { self.complete_all_requests(active_requests, None, None) };
             self.clear_outstanding();
 
             true
@@ -840,7 +1047,9 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
 
         match raw::wait_some(&mut self.requests, indices, Some(raw_statuses)) {
             Some(count) => {
-                self.check_some_null(&indices[..count as usize]);
+                unsafe {
+                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None, None);
+                }
                 self.decrease_outstanding(count as usize);
 
                 Some(count)
@@ -863,7 +1072,9 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     pub fn wait_some_into_without_status(&mut self, indices: &mut [i32]) -> Option<i32> {
         match raw::wait_some(&mut self.requests, indices, None) {
             Some(count) => {
-                self.check_some_null(&indices[..count as usize]);
+                unsafe {
+                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None, None);
+                }
                 self.decrease_outstanding(count as usize);
 
                 Some(count)
@@ -885,13 +1096,13 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     ///
     /// 3.7.5
     pub fn wait_some(&mut self) -> Option<(Vec<i32>, Vec<Status>)> {
-        let mut indices = vec![unsafe { mem::uninitialized() }; self.requests.len()];
-        let mut statuses = vec![unsafe { mem::uninitialized() }; self.requests.len()];
+        let mut indices = vec![unsafe { uninitialized() }; self.requests.len()];
+        let mut statuses = vec![unsafe { uninitialized() }; self.requests.len()];
 
         match self.wait_some_into(&mut indices, &mut statuses) {
             Some(count) => {
-                indices.resize(count as usize, unsafe { mem::uninitialized() });
-                statuses.resize(count as usize, unsafe { mem::uninitialized() });
+                indices.resize(count as usize, unsafe { uninitialized() });
+                statuses.resize(count as usize, unsafe { uninitialized() });
 
                 Some((indices, statuses))
             }
@@ -910,11 +1121,11 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     ///
     /// 3.7.5
     pub fn wait_some_without_status(&mut self) -> Option<Vec<i32>> {
-        let mut indices = vec![unsafe { mem::uninitialized() }; self.requests.len()];
+        let mut indices = vec![unsafe { uninitialized() }; self.requests.len()];
 
         match self.wait_some_into_without_status(&mut indices) {
             Some(count) => {
-                indices.resize(count as usize, unsafe { mem::uninitialized() });
+                indices.resize(count as usize, unsafe { uninitialized() });
 
                 Some(indices)
             }
@@ -942,7 +1153,9 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
 
         match raw::test_some(&mut self.requests, indices, Some(raw_statuses)) {
             Some(count) => {
-                self.check_some_null(&indices[..count as usize]);
+                unsafe {
+                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None, None);
+                }
                 self.decrease_outstanding(count as usize);
 
                 Some(count)
@@ -965,7 +1178,9 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     pub fn test_some_into_without_status(&mut self, indices: &mut [i32]) -> Option<i32> {
         match raw::test_some(&mut self.requests, indices, None) {
             Some(count) => {
-                self.check_some_null(&indices[..count as usize]);
+                unsafe {
+                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None, None);
+                }
                 self.decrease_outstanding(count as usize);
 
                 Some(count)
@@ -987,13 +1202,13 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     ///
     /// 3.7.5
     pub fn test_some(&mut self) -> Option<(Vec<i32>, Vec<Status>)> {
-        let mut indices = vec![unsafe { mem::uninitialized() }; self.requests.len()];
-        let mut statuses = vec![unsafe { mem::uninitialized() }; self.requests.len()];
+        let mut indices = vec![unsafe { uninitialized() }; self.requests.len()];
+        let mut statuses = vec![unsafe { uninitialized() }; self.requests.len()];
 
         match self.test_some_into(&mut indices, &mut statuses) {
             Some(count) => {
-                indices.resize(count as usize, unsafe { mem::uninitialized() });
-                statuses.resize(count as usize, unsafe { mem::uninitialized() });
+                indices.resize(count as usize, unsafe { uninitialized() });
+                statuses.resize(count as usize, unsafe { uninitialized() });
 
                 Some((indices, statuses))
             }
@@ -1012,11 +1227,11 @@ impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     ///
     /// 3.7.5
     pub fn test_some_without_status(&mut self) -> Option<Vec<i32>> {
-        let mut indices = vec![unsafe { mem::uninitialized() }; self.requests.len()];
+        let mut indices = vec![unsafe { uninitialized() }; self.requests.len()];
 
         match self.test_some_into_without_status(&mut indices) {
             Some(count) => {
-                indices.resize(count as usize, unsafe { mem::uninitialized() });
+                indices.resize(count as usize, unsafe { uninitialized() });
 
                 Some(indices)
             }
@@ -1090,8 +1305,8 @@ impl<'a, Sc: Scope<'a>, S, R> Drop for CancelGuard<'a, Sc, S, R> {
 impl<'a, Sc: Scope<'a>, S, R> From<CancelGuard<'a, Sc, S, R>> for WaitGuard<'a, Sc, S, R> {
     fn from(mut guard: CancelGuard<'a, Sc, S, R>) -> Self {
         unsafe {
-            let inner = mem::replace(&mut guard.0, mem::uninitialized());
-            mem::forget(guard);
+            let inner = replace(&mut guard.0, uninitialized());
+            forget(guard);
             inner
         }
     }

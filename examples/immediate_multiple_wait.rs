@@ -2,6 +2,7 @@
 extern crate mpi;
 
 use mpi::traits::*;
+use mpi::request::StaticScope;
 
 fn main() {
     let universe = mpi::initialize().unwrap();
@@ -20,17 +21,16 @@ fn main() {
     // The ranks will be received into this Vec<usize>
     let mut ranks = vec![0usize; num_targets];
 
-    mpi::request::scope(|scope| {
+    {
         // Creates, initiates, and collects send requests into a RequestCollection.
         let mut send_requests = (0..num_targets)
             .map(|r| r * 2 + lbound)
             .map(|target| {
                 world
                     .process_at_rank(target as i32)
-                    .immediate_send(scope, &rank)
-                    .forget_data()
+                    .immediate_send(StaticScope, &rank)
             })
-            .collect_requests(scope);
+            .collect_requests(StaticScope);
 
         // Creates, initiates, and collects receive requests into a RequestCollection.
         let mut recv_requests = (0..num_targets)
@@ -39,10 +39,9 @@ fn main() {
             .map(|(target, rank)| {
                 world
                     .process_at_rank(target as i32)
-                    .immediate_receive_into(scope, rank)
-                    .forget_data()
+                    .immediate_receive_into(StaticScope, rank)
             })
-            .collect_requests(scope);
+            .collect_requests(StaticScope);
 
         // Calls wait_some on the RequestCollection until it is empty.
         let mut received_from = vec![false; num_targets];
@@ -68,7 +67,7 @@ fn main() {
         );
 
         send_requests.wait_all_without_status();
-    });
+    }
 
     let expected: Vec<_> = (0..num_targets).map(|rank| rank * 2 + lbound).collect();
     assert_eq!(expected, ranks, "Did not receive the expected ranks.");
