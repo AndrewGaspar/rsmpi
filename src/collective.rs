@@ -25,7 +25,7 @@ use ffi::{MPI_Op, MPI_Request};
 use datatype::{DatatypeRef, DynBuffer, DynBufferMut};
 use datatype::traits::*;
 use raw::traits::*;
-use request::{Request, Scope, StaticScope};
+use request::{RecvRequest, Request, Scope, SendRecvRequest, SendRequest, StaticScope};
 use topology::traits::*;
 use topology::{Process, Rank};
 
@@ -103,7 +103,7 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.7
-    fn all_gather_varcount_into<S, R: ?Sized>(&self, sendbuf: S, recvbuf: &mut R)
+    fn all_gather_varcount_into<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
         S: ReadBuffer,
         R: PartitionedBufferMut,
@@ -161,7 +161,7 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.8
-    fn all_to_all_varcount_into<S: ?Sized, R: ?Sized>(&self, sendbuf: &S, recvbuf: &mut R)
+    fn all_to_all_varcount_into<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
         S: PartitionedBuffer,
         R: PartitionedBufferMut,
@@ -220,12 +220,8 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.10.1
-    fn reduce_scatter_block_into<S, R, O>(
-        &self,
-        sendbuf: S,
-        mut recvbuf: R,
-        op: O,
-    ) where
+    fn reduce_scatter_block_into<S, R, O>(&self, sendbuf: S, mut recvbuf: R, op: O)
+    where
         S: ReadBuffer,
         R: WriteBuffer,
         O: Operation,
@@ -334,7 +330,7 @@ pub trait CommunicatorCollectives: Communicator {
         scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> Request<'a, Sc, R>
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + WriteBuffer,
@@ -353,7 +349,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -371,8 +367,8 @@ pub trait CommunicatorCollectives: Communicator {
         &self,
         scope: Sc,
         sendbuf: S,
-        recvbuf: &mut R,
-    ) -> Request<'a, Sc>
+        mut recvbuf: R,
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + PartitionedBufferMut,
@@ -391,7 +387,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw(request, scope)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -409,7 +405,7 @@ pub trait CommunicatorCollectives: Communicator {
         scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> Request<'a, Sc, R>
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + WriteBuffer,
@@ -428,7 +424,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -437,12 +433,12 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.6
-    fn immediate_all_to_all_varcount_into<'a, Sc, S: ?Sized, R: ?Sized>(
+    fn immediate_all_to_all_varcount_into<'a, Sc, S, R>(
         &self,
         scope: Sc,
-        sendbuf: &'a S,
-        recvbuf: &'a mut R,
-    ) -> Request<'a, Sc>
+        sendbuf: S,
+        mut recvbuf: R,
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + PartitionedBuffer,
         R: 'a + PartitionedBufferMut,
@@ -462,7 +458,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw(request, scope)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -482,7 +478,7 @@ pub trait CommunicatorCollectives: Communicator {
         sendbuf: S,
         mut recvbuf: R,
         op: O,
-    ) -> Request<'a, Sc, R>
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + WriteBuffer,
@@ -500,7 +496,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -521,7 +517,7 @@ pub trait CommunicatorCollectives: Communicator {
         sendbuf: S,
         mut recvbuf: R,
         op: O,
-    ) -> Request<'a, Sc, R>
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + WriteBuffer,
@@ -540,7 +536,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -560,7 +556,7 @@ pub trait CommunicatorCollectives: Communicator {
         sendbuf: S,
         mut recvbuf: R,
         op: O,
-    ) -> Request<'a, Sc, R>
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + WriteBuffer,
@@ -578,7 +574,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -598,7 +594,7 @@ pub trait CommunicatorCollectives: Communicator {
         sendbuf: S,
         mut recvbuf: R,
         op: O,
-    ) -> Request<'a, Sc, R>
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + WriteBuffer,
@@ -616,7 +612,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 }
@@ -786,7 +782,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.5
-    fn gather_varcount_into_root<S, R: ?Sized>(&self, sendbuf: S, recvbuf: &mut R)
+    fn gather_varcount_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
         S: ReadBuffer,
         R: PartitionedBufferMut,
@@ -935,7 +931,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.6
-    fn scatter_varcount_into_root<S: ?Sized, R>(&self, sendbuf: &S, mut recvbuf: R)
+    fn scatter_varcount_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
         S: PartitionedBuffer,
         R: WriteBuffer,
@@ -1032,7 +1028,7 @@ pub trait Root: AsCommunicator {
         &self,
         scope: Sc,
         mut recvbuf: R,
-    ) -> Request<'a, Sc, R>
+    ) -> RecvRequest<'a, R, Sc>
     where
         R: 'a + WriteBuffer,
         Sc: Scope<'a>,
@@ -1047,7 +1043,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, (), recvbuf)
         }
     }
 
@@ -1062,7 +1058,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
-    fn immediate_gather_into<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> Request<'a, Sc>
+    fn immediate_gather_into<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> SendRequest<'a, S, Sc>
     where
         S: 'a + ReadBuffer,
         Sc: Scope<'a>,
@@ -1081,7 +1077,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw(request, scope)
+            Request::from_raw_data(request, scope, sendbuf, ())
         }
     }
 
@@ -1101,7 +1097,7 @@ pub trait Root: AsCommunicator {
         scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> Request<'a, Sc, R>
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + WriteBuffer,
@@ -1122,7 +1118,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -1141,7 +1137,7 @@ pub trait Root: AsCommunicator {
         &self,
         scope: Sc,
         sendbuf: S,
-    ) -> Request<'a, Sc>
+    ) -> SendRequest<'a, S, Sc>
     where
         S: 'a + ReadBuffer,
         Sc: Scope<'a>,
@@ -1161,7 +1157,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw(request, scope)
+            Request::from_raw_data(request, scope, sendbuf, ())
         }
     }
 
@@ -1176,12 +1172,12 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
-    fn immediate_gather_varcount_into_root<'a, Sc, S, R: ?Sized>(
+    fn immediate_gather_varcount_into_root<'a, Sc, S, R>(
         &self,
         scope: Sc,
         sendbuf: S,
-        recvbuf: &'a mut R,
-    ) -> Request<'a, Sc>
+        mut recvbuf: R,
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + PartitionedBufferMut,
@@ -1202,7 +1198,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw(request, scope)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -1217,11 +1213,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
-    fn immediate_scatter_into<'a, Sc, R>(
-        &self,
-        scope: Sc,
-        mut recvbuf: R,
-    ) -> Request<'a, Sc, R>
+    fn immediate_scatter_into<'a, Sc, R>(&self, scope: Sc, mut recvbuf: R) -> RecvRequest<'a, R, Sc>
     where
         R: 'a + WriteBuffer,
         Sc: Scope<'a>,
@@ -1240,7 +1232,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, (), recvbuf)
         }
     }
 
@@ -1260,7 +1252,7 @@ pub trait Root: AsCommunicator {
         scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> Request<'a, Sc, R>
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + WriteBuffer,
@@ -1281,7 +1273,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 
@@ -1300,7 +1292,7 @@ pub trait Root: AsCommunicator {
         &self,
         scope: Sc,
         mut recvbuf: R,
-    ) -> Request<'a, Sc, R>
+    ) -> RecvRequest<'a, R, Sc>
     where
         R: 'a + WriteBuffer,
         Sc: Scope<'a>,
@@ -1320,7 +1312,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, (), recvbuf)
         }
     }
 
@@ -1335,12 +1327,12 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
-    fn immediate_scatter_varcount_into_root<'a, Sc, S: ?Sized, R>(
+    fn immediate_scatter_varcount_into_root<'a, Sc, S, R>(
         &self,
         scope: Sc,
-        sendbuf: &'a S,
+        sendbuf: S,
         mut recvbuf: R,
-    ) -> Request<'a, Sc, R>
+    ) -> RecvRequest<'a, R, Sc>
     where
         S: 'a + PartitionedBuffer,
         R: 'a + WriteBuffer,
@@ -1361,7 +1353,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, (), recvbuf)
         }
     }
 
@@ -1382,7 +1374,7 @@ pub trait Root: AsCommunicator {
         scope: Sc,
         sendbuf: S,
         op: O,
-    ) -> Request<'a, Sc>
+    ) -> SendRequest<'a, S, Sc>
     where
         S: 'a + ReadBuffer,
         O: 'a + Operation,
@@ -1401,7 +1393,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw(request, scope)
+            Request::from_raw_data(request, scope, sendbuf, ())
         }
     }
 
@@ -1423,7 +1415,7 @@ pub trait Root: AsCommunicator {
         sendbuf: S,
         mut recvbuf: R,
         op: O,
-    ) -> Request<'a, Sc, R>
+    ) -> SendRecvRequest<'a, S, R, Sc>
     where
         S: 'a + ReadBuffer,
         R: 'a + WriteBuffer,
@@ -1443,7 +1435,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, recvbuf)
+            Request::from_raw_data(request, scope, sendbuf, recvbuf)
         }
     }
 }

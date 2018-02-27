@@ -30,10 +30,10 @@ fn main() {
 
         let mut buf = vec![0; (size * (size - 1) / 2) as usize];
         {
-            let mut partition = PartitionMut::new(&mut buf[..], counts, &displs[..]);
+            let partition = PartitionMut::new(&mut buf[..], counts, &displs[..]);
             mpi::request::scope(|scope| {
                 root_process
-                    .immediate_gather_varcount_into_root(scope, &msg[..], &mut partition)
+                    .immediate_gather_varcount_into_root(scope, &msg[..], partition)
                     .wait();
             })
         }

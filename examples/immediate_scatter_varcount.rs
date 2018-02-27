@@ -31,7 +31,7 @@ fn main() {
         let partition = Partition::new(&msg[..], counts, &displs[..]);
         mpi::request::scope(|scope| {
             root_process
-                .immediate_scatter_varcount_into_root(scope, &partition, &mut buf[..])
+                .immediate_scatter_varcount_into_root(scope, partition, &mut buf[..])
                 .wait();
         });
     } else {

@@ -61,11 +61,11 @@ pub mod traits {
 /// # Standard section(s)
 ///
 /// 3.7.1
-pub trait AsyncRequest<'a, S: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
+pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
     /// Unregister the request object from its scope and deconstruct it into its raw parts.
     ///
     /// This is unsafe because the request may outlive its associated buffers.
-    unsafe fn into_raw(self) -> (MPI_Request, S);
+    unsafe fn into_raw(self) -> (MPI_Request, Sc);
 
     /// Wait for an operation to finish.
     ///
@@ -171,27 +171,41 @@ pub trait AsyncRequest<'a, S: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
 /// 3.7.1
 #[must_use]
 #[derive(Debug)]
-pub struct Request<'a, S: Scope<'a> = StaticScope, D = ()> {
+pub struct Request<'a, Sc: Scope<'a> = StaticScope, S = (), R = ()> {
     request: MPI_Request,
-    scope: S,
-    data: D,
+    scope: Sc,
+    send_data: S,
+    recv_data: R,
     phantom: PhantomData<Cell<&'a ()>>,
 }
 
-unsafe impl<'a, S: Scope<'a>, D> AsRaw for Request<'a, S, D> {
+/// A `SendRequest` is a request that is sending data. It maintains either a const borrow or
+/// ownership of the buffer being sent.
+pub type SendRequest<'a, S, Sc = StaticScope> = Request<'a, Sc, S, ()>;
+
+/// A `RecvRequest` is a request that is receiving data. It maintains either a mutable borrow or
+/// ownership of the buffer receiving the data.
+pub type RecvRequest<'a, R, Sc = StaticScope> = Request<'a, Sc, (), R>;
+
+/// A `SendRecvRequest` is a request that is sending and receiving data. It maintains a const
+/// borrow or ownership of the buffer being sent, and a mutable borrow or ownership of the buffer
+/// receiving the data.
+pub type SendRecvRequest<'a, S, R, Sc = StaticScope> = Request<'a, Sc, S, R>;
+
+unsafe impl<'a, Sc: Scope<'a>, S, R> AsRaw for Request<'a, Sc, S, R> {
     type Raw = MPI_Request;
     fn as_raw(&self) -> Self::Raw {
         self.request
     }
 }
 
-impl<'a, S: Scope<'a>, D> Drop for Request<'a, S, D> {
+impl<'a, Sc: Scope<'a>, S, R> Drop for Request<'a, Sc, S, R> {
     fn drop(&mut self) {
         panic!("request was dropped without being completed");
     }
 }
 
-impl<'a, S: Scope<'a>> Request<'a, S> {
+impl<'a, Sc: Scope<'a>> Request<'a, Sc> {
     /// Construct a request object from the raw MPI type.
     ///
     /// # Requirements
@@ -201,19 +215,20 @@ impl<'a, S: Scope<'a>> Request<'a, S> {
     /// - All buffers associated with the request must outlive `'a`.
     /// - The request must not be registered with the given scope.
     ///
-    pub unsafe fn from_raw(request: MPI_Request, scope: S) -> Self {
+    pub unsafe fn from_raw(request: MPI_Request, scope: Sc) -> Self {
         debug_assert!(!request.is_handle_null());
         scope.register();
         Self {
             request: request,
             scope: scope,
-            data: (),
+            send_data: (),
+            recv_data: (),
             phantom: Default::default(),
         }
     }
 }
 
-impl<'a, S: Scope<'a>, D> Request<'a, S, D> {
+impl<'a, Sc: Scope<'a>, S, R> Request<'a, Sc, S, R> {
     /// Construct a request object from the raw MPI type and its associated data buffer.
     ///
     /// # Requirements
@@ -224,36 +239,44 @@ impl<'a, S: Scope<'a>, D> Request<'a, S, D> {
     /// - The request must not be registered with the given scope.
     /// - If `data` is a reference, the referenced must live at least as long as the MPI Request.
     ///
-    pub unsafe fn from_raw_data(request: MPI_Request, scope: S, data: D) -> Self {
+    pub unsafe fn from_raw_data(
+        request: MPI_Request,
+        scope: Sc,
+        send_data: S,
+        recv_data: R,
+    ) -> Self {
         debug_assert!(!request.is_handle_null());
         scope.register();
         Self {
             request: request,
             scope: scope,
-            data: data,
+            send_data: send_data,
+            recv_data: recv_data,
             phantom: Default::default(),
         }
     }
-    
+
     /// Unregister the request object from its scope and deconstruct it into its raw parts.
     ///
     /// This is unsafe because the request may outlive its associated buffers.
-    pub unsafe fn into_raw_data(mut self) -> (MPI_Request, S, D) {
+    pub unsafe fn into_raw_data(mut self) -> (MPI_Request, Sc, S, R) {
         let request = mem::replace(&mut self.request, mem::uninitialized());
         let scope = mem::replace(&mut self.scope, mem::uninitialized());
-        let data = mem::replace(&mut self.data, mem::uninitialized());
+        let send_data = mem::replace(&mut self.send_data, mem::uninitialized());
+        let recv_data = mem::replace(&mut self.recv_data, mem::uninitialized());
         drop(mem::replace(&mut self.phantom, mem::uninitialized()));
         mem::forget(self);
         scope.unregister();
-        (request, scope, data)
+        (request, scope, send_data, recv_data)
     }
 }
 
-impl<'a, S: Scope<'a>, D> AsyncRequest<'a, S> for Request<'a, S, D> {
-    unsafe fn into_raw(mut self) -> (MPI_Request, S) {
+impl<'a, Sc: Scope<'a>, S, R> AsyncRequest<'a, Sc> for Request<'a, Sc, S, R> {
+    unsafe fn into_raw(mut self) -> (MPI_Request, Sc) {
         let request = mem::replace(&mut self.request, mem::uninitialized());
         let scope = mem::replace(&mut self.scope, mem::uninitialized());
-        drop(mem::replace(&mut self.data, mem::uninitialized()));
+        drop(mem::replace(&mut self.send_data, mem::uninitialized()));
+        drop(mem::replace(&mut self.recv_data, mem::uninitialized()));
         drop(mem::replace(&mut self.phantom, mem::uninitialized()));
         mem::forget(self);
         scope.unregister();
@@ -262,14 +285,15 @@ impl<'a, S: Scope<'a>, D> AsyncRequest<'a, S> for Request<'a, S, D> {
 }
 
 /// Collects an iterator of `Request` objects into a `RequestCollection` object
-pub trait CollectRequests<'a, S: Scope<'a>>: IntoIterator<Item = Request<'a, S>> {
+pub trait CollectRequests<'a, Sc: Scope<'a>>
+    : IntoIterator<Item = Request<'a, Sc>> {
     /// Consumes and converts an iterator of `Requst` objects into a `RequestCollection` object.
     fn collect_requests<'b, S2: Scope<'b>>(self, scope: S2) -> RequestCollection<'b, S2>
     where
         'a: 'b;
 }
 
-impl<'a, S: Scope<'a>, T: IntoIterator<Item = Request<'a, S>>> CollectRequests<'a, S> for T {
+impl<'a, Sc: Scope<'a>, T: IntoIterator<Item = Request<'a, Sc>>> CollectRequests<'a, Sc> for T {
     fn collect_requests<'b, S2: Scope<'b>>(self, scope: S2) -> RequestCollection<'b, S2>
     where
         'a: 'b,
@@ -323,7 +347,7 @@ pub enum TestAnyWithoutStatus {
 /// 3.7.5
 #[must_use]
 #[derive(Debug)]
-pub struct RequestCollection<'a, S: Scope<'a> = StaticScope> {
+pub struct RequestCollection<'a, Sc: Scope<'a> = StaticScope> {
     // Tracks the number of request handles in `requests` are active.
     outstanding: usize,
 
@@ -333,11 +357,11 @@ pub struct RequestCollection<'a, S: Scope<'a> = StaticScope> {
 
     // The scope attached to the RequestCollection. All requests in the collection must be
     // deallocated when this scope exits.
-    scope: S,
+    scope: Sc,
     phantom: PhantomData<Cell<&'a ()>>,
 }
 
-impl<'a, S: Scope<'a>> Drop for RequestCollection<'a, S> {
+impl<'a, Sc: Scope<'a>> Drop for RequestCollection<'a, Sc> {
     fn drop(&mut self) {
         if self.outstanding != 0 {
             panic!("RequestCollection was dropped with outstanding requests not completed.");
@@ -345,10 +369,10 @@ impl<'a, S: Scope<'a>> Drop for RequestCollection<'a, S> {
     }
 }
 
-impl<'a, S: Scope<'a>> RequestCollection<'a, S> {
+impl<'a, Sc: Scope<'a>> RequestCollection<'a, Sc> {
     /// Constructs a `RequestCollection` from a Vec of `MPI_Request` handles and a scope object.
     /// `requests` are allowed to be null, but they must not be persistent requests.
-    pub fn from_raw(requests: Vec<MPI_Request>, scope: S) -> Self {
+    pub fn from_raw(requests: Vec<MPI_Request>, scope: Sc) -> Self {
         let outstanding = requests
             .iter()
             .filter(|&request| !request.is_handle_null())
@@ -364,12 +388,12 @@ impl<'a, S: Scope<'a>> RequestCollection<'a, S> {
     }
 
     /// Constructs a new, empty `RequestCollection` object.
-    pub fn new(scope: S) -> Self {
+    pub fn new(scope: Sc) -> Self {
         Self::with_capacity(scope, 0)
     }
 
     /// Constructs a new, empty `RequestCollection` with reserved space for `capacity` requests.
-    pub fn with_capacity(scope: S, capacity: usize) -> Self {
+    pub fn with_capacity(scope: Sc, capacity: usize) -> Self {
         RequestCollection {
             outstanding: 0,
             requests: Vec::with_capacity(capacity),
@@ -380,7 +404,7 @@ impl<'a, S: Scope<'a>> RequestCollection<'a, S> {
 
     /// Converts an iterator of request objects to a `RequestCollection`. The scope of each request
     /// must be larger than or equal of the new `RequestCollection`.
-    fn from_request_iter<'b: 'a, T, S2: Scope<'b>>(iter: T, scope: S) -> Self
+    fn from_request_iter<'b: 'a, T, S2: Scope<'b>>(iter: T, scope: Sc) -> Self
     where
         T: IntoIterator<Item = Request<'b, S2>>,
     {
@@ -501,7 +525,7 @@ impl<'a, S: Scope<'a>> RequestCollection<'a, S> {
 
     /// Returns the underlying array of MPI_Request objects and their attached
     /// scope.
-    pub unsafe fn into_raw(mut self) -> (Vec<MPI_Request>, S) {
+    pub unsafe fn into_raw(mut self) -> (Vec<MPI_Request>, Sc) {
         let requests = mem::replace(&mut self.requests, mem::uninitialized());
         let scope = mem::replace(&mut self.scope, mem::uninitialized());
         let _ = mem::replace(&mut self.phantom, mem::uninitialized());
@@ -971,34 +995,36 @@ impl<'a, S: Scope<'a>> RequestCollection<'a, S> {
 ///
 /// See `examples/immediate.rs`
 #[derive(Debug)]
-pub struct WaitGuard<'a, S: Scope<'a> = StaticScope, D = ()>(Option<Request<'a, S, D>>);
+pub struct WaitGuard<'a, Sc: Scope<'a> = StaticScope, S = (), R = ()>(
+    Option<Request<'a, Sc, S, R>>,
+);
 
-impl<'a, S: Scope<'a>, D> Drop for WaitGuard<'a, S, D> {
+impl<'a, Sc: Scope<'a>, S, R> Drop for WaitGuard<'a, Sc, S, R> {
     fn drop(&mut self) {
         self.0.take().expect("invalid WaitGuard").wait();
     }
 }
 
-unsafe impl<'a, S: Scope<'a>, D> AsRaw for WaitGuard<'a, S, D> {
+unsafe impl<'a, Sc: Scope<'a>, S, R> AsRaw for WaitGuard<'a, Sc, S, R> {
     type Raw = MPI_Request;
     fn as_raw(&self) -> Self::Raw {
         self.0.as_ref().expect("invalid WaitGuard").as_raw()
     }
 }
 
-impl<'a, S: Scope<'a>, D> From<WaitGuard<'a, S, D>> for Request<'a, S, D> {
-    fn from(mut guard: WaitGuard<'a, S, D>) -> Self {
+impl<'a, Sc: Scope<'a>, S, R> From<WaitGuard<'a, Sc, S, R>> for Request<'a, Sc, S, R> {
+    fn from(mut guard: WaitGuard<'a, Sc, S, R>) -> Self {
         guard.0.take().expect("invalid WaitGuard")
     }
 }
 
-impl<'a, S: Scope<'a>, D> From<Request<'a, S, D>> for WaitGuard<'a, S, D> {
-    fn from(req: Request<'a, S, D>) -> Self {
+impl<'a, Sc: Scope<'a>, S, R> From<Request<'a, Sc, S, R>> for WaitGuard<'a, Sc, S, R> {
+    fn from(req: Request<'a, Sc, S, R>) -> Self {
         WaitGuard(Some(req))
     }
 }
 
-impl<'a, S: Scope<'a>, D> WaitGuard<'a, S, D> {
+impl<'a, Sc: Scope<'a>, S, R> WaitGuard<'a, Sc, S, R> {
     fn cancel(&self) {
         if let Some(ref req) = self.0 {
             req.cancel();
@@ -1015,16 +1041,16 @@ impl<'a, S: Scope<'a>, D> WaitGuard<'a, S, D> {
 ///
 /// See `examples/immediate.rs`
 #[derive(Debug)]
-pub struct CancelGuard<'a, S: Scope<'a> = StaticScope, D = ()>(WaitGuard<'a, S, D>);
+pub struct CancelGuard<'a, Sc: Scope<'a> = StaticScope, S = (), R = ()>(WaitGuard<'a, Sc, S, R>);
 
-impl<'a, S: Scope<'a>, D> Drop for CancelGuard<'a, S, D> {
+impl<'a, Sc: Scope<'a>, S, R> Drop for CancelGuard<'a, Sc, S, R> {
     fn drop(&mut self) {
         self.0.cancel();
     }
 }
 
-impl<'a, S: Scope<'a>, D> From<CancelGuard<'a, S, D>> for WaitGuard<'a, S, D> {
-    fn from(mut guard: CancelGuard<'a, S, D>) -> Self {
+impl<'a, Sc: Scope<'a>, S, R> From<CancelGuard<'a, Sc, S, R>> for WaitGuard<'a, Sc, S, R> {
+    fn from(mut guard: CancelGuard<'a, Sc, S, R>) -> Self {
         unsafe {
             let inner = mem::replace(&mut guard.0, mem::uninitialized());
             mem::forget(guard);
@@ -1033,14 +1059,14 @@ impl<'a, S: Scope<'a>, D> From<CancelGuard<'a, S, D>> for WaitGuard<'a, S, D> {
     }
 }
 
-impl<'a, S: Scope<'a>, D> From<WaitGuard<'a, S, D>> for CancelGuard<'a, S, D> {
-    fn from(guard: WaitGuard<'a, S, D>) -> Self {
+impl<'a, Sc: Scope<'a>, S, R> From<WaitGuard<'a, Sc, S, R>> for CancelGuard<'a, Sc, S, R> {
+    fn from(guard: WaitGuard<'a, Sc, S, R>) -> Self {
         CancelGuard(guard)
     }
 }
 
-impl<'a, S: Scope<'a>, D> From<Request<'a, S, D>> for CancelGuard<'a, S, D> {
-    fn from(req: Request<'a, S, D>) -> Self {
+impl<'a, Sc: Scope<'a>, S, R> From<Request<'a, Sc, S, R>> for CancelGuard<'a, Sc, S, R> {
+    fn from(req: Request<'a, Sc, S, R>) -> Self {
         CancelGuard(WaitGuard::from(req))
     }
 }

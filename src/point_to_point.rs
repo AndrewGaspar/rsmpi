@@ -23,7 +23,7 @@ use ffi::{MPI_Message, MPI_Request, MPI_Status};
 
 use datatype::traits::*;
 use raw::traits::*;
-use request::{AsyncRequest, Request, Scope, StaticScope};
+use request::{AsyncRequest, RecvRequest, Request, Scope, SendRequest, StaticScope};
 use topology::{AnyProcess, CommunicatorRelation, Process, Rank};
 use topology::traits::*;
 
@@ -178,21 +178,21 @@ pub unsafe trait Source: AsCommunicator {
 
     /// Receive a message into a `WriteBuffer`.
     ///
-    /// Receive a message from `Source` `&self` tagged `tag` into `WriteBuffer` `buf`.
+    /// Receive a message from `Source` `&self` tagged `tag` into `WriteBuffer` `recvbuf`.
     ///
     /// # Standard section(s)
     ///
     /// 3.2.4
-    fn receive_into_with_tag<Buf>(&self, mut buf: Buf, tag: Tag) -> Status
+    fn receive_into_with_tag<R>(&self, mut recvbuf: R, tag: Tag) -> Status
     where
-        Buf: WriteBuffer,
+        R: WriteBuffer,
     {
         let mut status: MPI_Status = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Recv(
-                buf.pointer_mut(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                recvbuf.pointer_mut(),
+                recvbuf.count(),
+                recvbuf.as_datatype().as_raw(),
                 self.source_rank(),
                 tag,
                 self.as_communicator().as_raw(),
@@ -204,16 +204,16 @@ pub unsafe trait Source: AsCommunicator {
 
     /// Receive a message into a `WriteBuffer`.
     ///
-    /// Receive a message from `Source` `&self` into `WriteBuffer` `buf`.
+    /// Receive a message from `Source` `&self` into `WriteBuffer` `recvbuf`.
     ///
     /// # Standard section(s)
     ///
     /// 3.2.4
-    fn receive_into<Buf>(&self, buf: Buf) -> Status
+    fn receive_into<R>(&self, recvbuf: R) -> Status
     where
-        Buf: WriteBuffer,
+        R: WriteBuffer,
     {
-        self.receive_into_with_tag(buf, unsafe_extern_static!(ffi::RSMPI_ANY_TAG))
+        self.receive_into_with_tag(recvbuf, unsafe_extern_static!(ffi::RSMPI_ANY_TAG))
     }
 
     /// Receive a message containing multiple instances of type `Msg` into a `Vec`.
@@ -251,39 +251,39 @@ pub unsafe trait Source: AsCommunicator {
 
     /// Initiate an immediate (non-blocking) receive operation.
     ///
-    /// Initiate receiving a message matching `tag` into `buf`.
+    /// Initiate receiving a message matching `tag` into `recvbuf`.
     ///
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_receive_into_with_tag<'a, Sc, Buf>(
+    fn immediate_receive_into_with_tag<'a, Sc, R>(
         &self,
         scope: Sc,
-        mut buf: Buf,
+        mut recvbuf: R,
         tag: Tag,
-    ) -> Request<'a, Sc, Buf>
+    ) -> RecvRequest<'a, R, Sc>
     where
-        Buf: 'a + WriteBuffer,
+        R: 'a + WriteBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Irecv(
-                buf.pointer_mut(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                recvbuf.pointer_mut(),
+                recvbuf.count(),
+                recvbuf.as_datatype().as_raw(),
                 self.source_rank(),
                 tag,
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, buf)
+            Request::from_raw_data(request, scope, (), recvbuf)
         }
     }
 
     /// Initiate an immediate (non-blocking) receive operation.
     ///
-    /// Initiate receiving a message into `buf`.
+    /// Initiate receiving a message into `recvbuf`.
     ///
     /// # Examples
     /// See `examples/immediate.rs`
@@ -291,16 +291,16 @@ pub unsafe trait Source: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_receive_into<'a, Sc, Buf>(
-        &self,
-        scope: Sc,
-        buf: Buf,
-    ) -> Request<'a, Sc, Buf>
+    fn immediate_receive_into<'a, Sc, R>(&self, scope: Sc, recvbuf: R) -> RecvRequest<'a, R, Sc>
     where
-        Buf: 'a + WriteBuffer,
+        R: 'a + WriteBuffer,
         Sc: Scope<'a>,
     {
-        self.immediate_receive_into_with_tag(scope, buf, unsafe_extern_static!(ffi::RSMPI_ANY_TAG))
+        self.immediate_receive_into_with_tag(
+            scope,
+            recvbuf,
+            unsafe_extern_static!(ffi::RSMPI_ANY_TAG),
+        )
     }
 
     /// Initiate a non-blocking receive operation for messages matching tag `tag`.
@@ -471,15 +471,15 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.2.1
-    fn send_with_tag<Buf>(&self, buf: Buf, tag: Tag)
+    fn send_with_tag<S>(&self, sendbuf: S, tag: Tag)
     where
-        Buf: ReadBuffer,
+        S: ReadBuffer,
     {
         unsafe {
             ffi::MPI_Send(
-                buf.pointer(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                sendbuf.pointer(),
+                sendbuf.count(),
+                sendbuf.as_datatype().as_raw(),
                 self.destination_rank(),
                 tag,
                 self.as_communicator().as_raw(),
@@ -508,11 +508,11 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.2.1
-    fn send<Buf>(&self, buf: Buf)
+    fn send<S>(&self, sendbuf: S)
     where
-        Buf: ReadBuffer,
+        S: ReadBuffer,
     {
-        self.send_with_tag(buf, Tag::default())
+        self.send_with_tag(sendbuf, Tag::default())
     }
 
     /// Blocking buffered mode send operation
@@ -522,15 +522,15 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.4
-    fn buffered_send_with_tag<Buf>(&self, buf: Buf, tag: Tag)
+    fn buffered_send_with_tag<S>(&self, sendbuf: S, tag: Tag)
     where
-        Buf: ReadBuffer,
+        S: ReadBuffer,
     {
         unsafe {
             ffi::MPI_Bsend(
-                buf.pointer(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                sendbuf.pointer(),
+                sendbuf.count(),
+                sendbuf.as_datatype().as_raw(),
                 self.destination_rank(),
                 tag,
                 self.as_communicator().as_raw(),
@@ -545,11 +545,11 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.4
-    fn buffered_send<Buf>(&self, buf: Buf)
+    fn buffered_send<S>(&self, sendbuf: S)
     where
-        Buf: ReadBuffer,
+        S: ReadBuffer,
     {
-        self.buffered_send_with_tag(buf, Tag::default())
+        self.buffered_send_with_tag(sendbuf, Tag::default())
     }
 
     /// Blocking synchronous mode send operation
@@ -561,15 +561,15 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.4
-    fn synchronous_send_with_tag<Buf>(&self, buf: Buf, tag: Tag)
+    fn synchronous_send_with_tag<S>(&self, sendbuf: S, tag: Tag)
     where
-        Buf: ReadBuffer,
+        S: ReadBuffer,
     {
         unsafe {
             ffi::MPI_Ssend(
-                buf.pointer(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                sendbuf.pointer(),
+                sendbuf.count(),
+                sendbuf.as_datatype().as_raw(),
                 self.destination_rank(),
                 tag,
                 self.as_communicator().as_raw(),
@@ -586,11 +586,11 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.4
-    fn synchronous_send<Buf>(&self, buf: Buf)
+    fn synchronous_send<S>(&self, sendbuf: S)
     where
-        Buf: ReadBuffer,
+        S: ReadBuffer,
     {
-        self.synchronous_send_with_tag(buf, Tag::default())
+        self.synchronous_send_with_tag(sendbuf, Tag::default())
     }
 
     /// Blocking ready mode send operation
@@ -602,15 +602,15 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.4
-    fn ready_send_with_tag<Buf>(&self, buf: Buf, tag: Tag)
+    fn ready_send_with_tag<S>(&self, sendbuf: S, tag: Tag)
     where
-        Buf: ReadBuffer,
+        S: ReadBuffer,
     {
         unsafe {
             ffi::MPI_Rsend(
-                buf.pointer(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                sendbuf.pointer(),
+                sendbuf.count(),
+                sendbuf.as_datatype().as_raw(),
                 self.destination_rank(),
                 tag,
                 self.as_communicator().as_raw(),
@@ -627,48 +627,48 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.4
-    fn ready_send<Buf>(&self, buf: Buf)
+    fn ready_send<S>(&self, sendbuf: S)
     where
-        Buf: ReadBuffer,
+        S: ReadBuffer,
     {
-        self.ready_send_with_tag(buf, Tag::default())
+        self.ready_send_with_tag(sendbuf, Tag::default())
     }
 
     /// Initiate an immediate (non-blocking) standard mode send operation.
     ///
-    /// Initiate sending the data in `buf` in standard mode and tag it.
+    /// Initiate sending the data in `sendbuf` in standard mode and tag it.
     ///
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_send_with_tag<'a, Sc, Buf>(
+    fn immediate_send_with_tag<'a, Sc, S>(
         &self,
         scope: Sc,
-        buf: Buf,
+        sendbuf: S,
         tag: Tag,
-    ) -> Request<'a, Sc, Buf>
+    ) -> SendRequest<'a, S, Sc>
     where
-        Buf: 'a + ReadBuffer,
+        S: 'a + ReadBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Isend(
-                buf.pointer(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                sendbuf.pointer(),
+                sendbuf.count(),
+                sendbuf.as_datatype().as_raw(),
                 self.destination_rank(),
                 tag,
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, buf)
+            Request::from_raw_data(request, scope, sendbuf, ())
         }
     }
 
     /// Initiate an immediate (non-blocking) standard mode send operation.
     ///
-    /// Initiate sending the data in `buf` in standard mode.
+    /// Initiate sending the data in `sendbuf` in standard mode.
     ///
     /// # Examples
     /// See `examples/immediate.rs`
@@ -676,151 +676,147 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_send<'a, Sc, Buf>(&self, scope: Sc, buf: Buf) -> Request<'a, Sc, Buf>
+    fn immediate_send<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> SendRequest<'a, S, Sc>
     where
-        Buf: 'a + ReadBuffer,
+        S: 'a + ReadBuffer,
         Sc: Scope<'a>,
     {
-        self.immediate_send_with_tag(scope, buf, Tag::default())
+        self.immediate_send_with_tag(scope, sendbuf, Tag::default())
     }
 
     /// Initiate an immediate (non-blocking) buffered mode send operation.
     ///
-    /// Initiate sending the data in `buf` in buffered mode and tag it.
+    /// Initiate sending the data in `sendbuf` in buffered mode and tag it.
     ///
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_buffered_send_with_tag<'a, Sc, Buf>(
+    fn immediate_buffered_send_with_tag<'a, Sc, S>(
         &self,
         scope: Sc,
-        buf: Buf,
+        sendbuf: S,
         tag: Tag,
-    ) -> Request<'a, Sc, Buf>
+    ) -> SendRequest<'a, S, Sc>
     where
-        Buf: 'a + ReadBuffer,
+        S: 'a + ReadBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Ibsend(
-                buf.pointer(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                sendbuf.pointer(),
+                sendbuf.count(),
+                sendbuf.as_datatype().as_raw(),
                 self.destination_rank(),
                 tag,
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, buf)
+            Request::from_raw_data(request, scope, sendbuf, ())
         }
     }
 
     /// Initiate an immediate (non-blocking) buffered mode send operation.
     ///
-    /// Initiate sending the data in `buf` in buffered mode.
+    /// Initiate sending the data in `sendbuf` in buffered mode.
     ///
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_buffered_send<'a, Sc, Buf: ReadBuffer>(
+    fn immediate_buffered_send<'a, Sc, S: ReadBuffer>(
         &self,
         scope: Sc,
-        buf: Buf,
-    ) -> Request<'a, Sc, Buf>
+        sendbuf: S,
+    ) -> SendRequest<'a, S, Sc>
     where
-        Buf: 'a + ReadBuffer,
+        S: 'a + ReadBuffer,
         Sc: Scope<'a>,
     {
-        self.immediate_buffered_send_with_tag(scope, buf, Tag::default())
+        self.immediate_buffered_send_with_tag(scope, sendbuf, Tag::default())
     }
 
     /// Initiate an immediate (non-blocking) synchronous mode send operation.
     ///
-    /// Initiate sending the data in `buf` in synchronous mode and tag it.
+    /// Initiate sending the data in `sendbuf` in synchronous mode and tag it.
     ///
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_synchronous_send_with_tag<'a, Sc, Buf>(
+    fn immediate_synchronous_send_with_tag<'a, Sc, S>(
         &self,
         scope: Sc,
-        buf: Buf,
+        sendbuf: S,
         tag: Tag,
-    ) -> Request<'a, Sc, Buf>
+    ) -> SendRequest<'a, S, Sc>
     where
-        Buf: 'a + ReadBuffer,
+        S: 'a + ReadBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Issend(
-                buf.pointer(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                sendbuf.pointer(),
+                sendbuf.count(),
+                sendbuf.as_datatype().as_raw(),
                 self.destination_rank(),
                 tag,
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, buf)
+            Request::from_raw_data(request, scope, sendbuf, ())
         }
     }
 
     /// Initiate an immediate (non-blocking) synchronous mode send operation.
     ///
-    /// Initiate sending the data in `buf` in synchronous mode.
+    /// Initiate sending the data in `sendbuf` in synchronous mode.
     ///
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_synchronous_send<'a, Sc, Buf>(
-        &self,
-        scope: Sc,
-        buf: Buf,
-    ) -> Request<'a, Sc, Buf>
+    fn immediate_synchronous_send<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> SendRequest<'a, S, Sc>
     where
-        Buf: 'a + ReadBuffer,
+        S: 'a + ReadBuffer,
         Sc: Scope<'a>,
     {
-        self.immediate_synchronous_send_with_tag(scope, buf, Tag::default())
+        self.immediate_synchronous_send_with_tag(scope, sendbuf, Tag::default())
     }
 
     /// Initiate an immediate (non-blocking) ready mode send operation.
     ///
-    /// Initiate sending the data in `buf` in ready mode and tag it.
+    /// Initiate sending the data in `sendbuf` in ready mode and tag it.
     ///
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_ready_send_with_tag<'a, Sc, Buf>(
+    fn immediate_ready_send_with_tag<'a, Sc, S>(
         &self,
         scope: Sc,
-        buf: Buf,
+        sendbuf: S,
         tag: Tag,
-    ) -> Request<'a, Sc, Buf>
+    ) -> SendRequest<'a, S, Sc>
     where
-        Buf: 'a + ReadBuffer,
+        S: 'a + ReadBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Irsend(
-                buf.pointer(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                sendbuf.pointer(),
+                sendbuf.count(),
+                sendbuf.as_datatype().as_raw(),
                 self.destination_rank(),
                 tag,
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, buf)
+            Request::from_raw_data(request, scope, sendbuf, ())
         }
     }
 
     /// Initiate an immediate (non-blocking) ready mode send operation.
     ///
-    /// Initiate sending the data in `buf` in ready mode.
+    /// Initiate sending the data in `sendbuf` in ready mode.
     ///
     /// # Examples
     ///
@@ -829,12 +825,12 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_ready_send<'a, Sc, Buf>(&self, scope: Sc, buf: Buf) -> Request<'a, Sc, Buf>
+    fn immediate_ready_send<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> SendRequest<'a, S, Sc>
     where
-        Buf: 'a + ReadBuffer,
+        S: 'a + ReadBuffer,
         Sc: Scope<'a>,
     {
-        self.immediate_ready_send_with_tag(scope, buf, Tag::default())
+        self.immediate_ready_send_with_tag(scope, sendbuf, Tag::default())
     }
 }
 
@@ -925,21 +921,21 @@ impl Message {
 
     /// Receive a previously probed message into a `ReadBuffer`.
     ///
-    /// Receive the message `&self` with contents matching `buf`.
+    /// Receive the message `&self` with contents matching `recvbuf`.
     ///
     /// # Standard section(s)
     ///
     /// 3.8.3
-    pub fn matched_receive_into<Buf>(mut self, mut buf: Buf) -> Status
+    pub fn matched_receive_into<R>(mut self, mut recvbuf: R) -> Status
     where
-        Buf: WriteBuffer,
+        R: WriteBuffer,
     {
         let mut status: MPI_Status = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Mrecv(
-                buf.pointer_mut(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                recvbuf.pointer_mut(),
+                recvbuf.count(),
+                recvbuf.as_datatype().as_raw(),
                 self.as_raw_mut(),
                 &mut status,
             );
@@ -950,31 +946,31 @@ impl Message {
 
     /// Asynchronously receive a previously probed message into a `ReadBuffer`.
     ///
-    /// Asynchronously receive the message `&self` with contents matching `buf`.
+    /// Asynchronously receive the message `&self` with contents matching `recvbuf`.
     ///
     /// # Standard section(s)
     ///
     /// 3.8.3
-    pub fn immediate_matched_receive_into<'a, Sc, Buf>(
+    pub fn immediate_matched_receive_into<'a, Sc, R>(
         mut self,
         scope: Sc,
-        mut buf: Buf,
-    ) -> Request<'a, Sc>
+        mut recvbuf: R,
+    ) -> RecvRequest<'a, R, Sc>
     where
-        Buf: 'a + WriteBuffer,
+        R: 'a + WriteBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Imrecv(
-                buf.pointer_mut(),
-                buf.count(),
-                buf.as_datatype().as_raw(),
+                recvbuf.pointer_mut(),
+                recvbuf.count(),
+                recvbuf.as_datatype().as_raw(),
                 self.as_raw_mut(),
                 &mut request,
             );
             assert_eq!(self.as_raw(), ffi::RSMPI_MESSAGE_NULL);
-            Request::from_raw(request, scope)
+            Request::from_raw_data(request, scope, (), recvbuf)
         }
     }
 }
@@ -1039,18 +1035,18 @@ impl MatchedReceiveVec for (Message, Status) {
 /// # Standard section(s)
 ///
 /// 3.10
-pub fn send_receive_with_tags<M, D, R, S>(
+pub fn send_receive_with_tags<M, Dst, R, Src>(
     msg: &M,
-    destination: &D,
+    destination: &Dst,
     sendtag: Tag,
-    source: &S,
+    source: &Src,
     receivetag: Tag,
 ) -> (R, Status)
 where
     M: Equivalence,
-    D: Destination,
+    Dst: Destination,
     R: Equivalence,
-    S: Source,
+    Src: Source,
 {
     let mut res: R = unsafe { mem::uninitialized() };
     let status =
@@ -1067,12 +1063,12 @@ where
 /// # Standard section(s)
 ///
 /// 3.10
-pub fn send_receive<R, M, D, S>(msg: &M, destination: &D, source: &S) -> (R, Status)
+pub fn send_receive<R, M, Dst, Src>(msg: &M, destination: &Dst, source: &Src) -> (R, Status)
 where
     M: Equivalence,
-    D: Destination,
+    Dst: Destination,
     R: Equivalence,
-    S: Source,
+    Src: Source,
 {
     send_receive_with_tags(
         msg,
@@ -1085,24 +1081,24 @@ where
 
 /// Sends the contents of `msg` to `destination` tagging it `sendtag` and
 /// simultaneously receives a message tagged `receivetag` from `source` into
-/// `buf`.
+/// `recvbuf`.
 ///
 /// # Standard section(s)
 ///
 /// 3.10
-pub fn send_receive_into_with_tags<Msg, D, Buf, S>(
-    msg: Msg,
-    destination: &D,
+pub fn send_receive_into_with_tags<S, Dst, R, Src>(
+    sendbuf: S,
+    destination: &Dst,
     sendtag: Tag,
-    mut buf: Buf,
-    source: &S,
+    mut recvbuf: R,
+    source: &Src,
     receivetag: Tag,
 ) -> Status
 where
-    Msg: ReadBuffer,
-    D: Destination,
-    Buf: WriteBuffer,
-    S: Source,
+    S: ReadBuffer,
+    Dst: Destination,
+    R: WriteBuffer,
+    Src: Source,
 {
     assert_eq!(
         source
@@ -1113,14 +1109,14 @@ where
     let mut status: MPI_Status = unsafe { mem::uninitialized() };
     unsafe {
         ffi::MPI_Sendrecv(
-            msg.pointer(),
-            msg.count(),
-            msg.as_datatype().as_raw(),
+            sendbuf.pointer(),
+            sendbuf.count(),
+            sendbuf.as_datatype().as_raw(),
             destination.destination_rank(),
             sendtag,
-            buf.pointer_mut(),
-            buf.count(),
-            buf.as_datatype().as_raw(),
+            recvbuf.pointer_mut(),
+            recvbuf.count(),
+            recvbuf.as_datatype().as_raw(),
             source.source_rank(),
             receivetag,
             source.as_communicator().as_raw(),
@@ -1130,53 +1126,53 @@ where
     Status(status)
 }
 
-/// Sends the contents of `msg` to `destination` and
+/// Sends the contents of `sendbuf` to `destination` and
 /// simultaneously receives a message from `source` into
-/// `buf`.
+/// `recvbuf`.
 ///
 /// # Standard section(s)
 ///
 /// 3.10
-pub fn send_receive_into<Msg, D, Buf, S>(
-    msg: Msg,
-    destination: &D,
-    buf: Buf,
-    source: &S,
+pub fn send_receive_into<S, Dst, R, Src>(
+    sendbuf: S,
+    destination: &Dst,
+    recvbuf: R,
+    source: &Src,
 ) -> Status
 where
-    Msg: ReadBuffer,
-    D: Destination,
-    Buf: WriteBuffer,
-    S: Source,
+    S: ReadBuffer,
+    Dst: Destination,
+    R: WriteBuffer,
+    Src: Source,
 {
     send_receive_into_with_tags(
-        msg,
+        sendbuf,
         destination,
         Tag::default(),
-        buf,
+        recvbuf,
         source,
         unsafe_extern_static!(ffi::RSMPI_ANY_TAG),
     )
 }
 
-/// Sends the contents of `buf` to `destination` tagging it `sendtag` and
+/// Sends the contents of `sendrecvbuf` to `destination` tagging it `sendtag` and
 /// simultaneously receives a message tagged `receivetag` from `source` and replaces the
-/// contents of `buf` with it.
+/// contents of `sendrecvbuf` with it.
 ///
 /// # Standard section(s)
 ///
 /// 3.10
-pub fn send_receive_replace_into_with_tags<Buf, D, S>(
-    mut buf: Buf,
-    destination: &D,
+pub fn send_receive_replace_into_with_tags<R, Dst, Src>(
+    mut sendrecvbuf: R,
+    destination: &Dst,
     sendtag: Tag,
-    source: &S,
+    source: &Src,
     receivetag: Tag,
 ) -> Status
 where
-    Buf: WriteBuffer,
-    D: Destination,
-    S: Source,
+    R: WriteBuffer,
+    Dst: Destination,
+    Src: Source,
 {
     assert_eq!(
         source
@@ -1187,9 +1183,9 @@ where
     let mut status: MPI_Status = unsafe { mem::uninitialized() };
     unsafe {
         ffi::MPI_Sendrecv_replace(
-            buf.pointer_mut(),
-            buf.count(),
-            buf.as_datatype().as_raw(),
+            sendrecvbuf.pointer_mut(),
+            sendrecvbuf.count(),
+            sendrecvbuf.as_datatype().as_raw(),
             destination.destination_rank(),
             sendtag,
             source.source_rank(),
@@ -1201,25 +1197,25 @@ where
     Status(status)
 }
 
-/// Sends the contents of `buf` to `destination` and
+/// Sends the contents of `sendrecvbuf` to `destination` and
 /// simultaneously receives a message from `source` and replaces the contents of
-/// `buf` with it.
+/// `sendrecvbuf` with it.
 ///
 /// # Standard section(s)
 ///
 /// 3.10
-pub fn send_receive_replace_into<Buf, D, S>(
-    buf: Buf,
-    destination: &D,
-    source: &S,
+pub fn send_receive_replace_into<R, Dst, Src>(
+    sendrecvbuf: R,
+    destination: &Dst,
+    source: &Src,
 ) -> Status
 where
-    Buf: WriteBuffer,
-    D: Destination,
-    S: Source,
+    R: WriteBuffer,
+    Dst: Destination,
+    Src: Source,
 {
     send_receive_replace_into_with_tags(
-        buf,
+        sendrecvbuf,
         destination,
         Tag::default(),
         source,
