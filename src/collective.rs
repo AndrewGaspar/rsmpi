@@ -332,8 +332,8 @@ pub trait CommunicatorCollectives: Communicator {
         mut recvbuf: R,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + WriteBuffer,
+        S: ReadBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -370,8 +370,8 @@ pub trait CommunicatorCollectives: Communicator {
         mut recvbuf: R,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + PartitionedBufferMut,
+        S: ReadBuffer,
+        R: PartitionedBufferMut,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -407,8 +407,8 @@ pub trait CommunicatorCollectives: Communicator {
         mut recvbuf: R,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + WriteBuffer,
+        S: ReadBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -440,8 +440,8 @@ pub trait CommunicatorCollectives: Communicator {
         mut recvbuf: R,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + PartitionedBuffer,
-        R: 'a + PartitionedBufferMut,
+        S: PartitionedBuffer,
+        R: PartitionedBufferMut,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -480,8 +480,8 @@ pub trait CommunicatorCollectives: Communicator {
         op: O,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + WriteBuffer,
+        S: ReadBuffer,
+        R: WriteBuffer,
         O: 'a + Operation,
         Sc: Scope<'a>,
     {
@@ -519,8 +519,8 @@ pub trait CommunicatorCollectives: Communicator {
         op: O,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + WriteBuffer,
+        S: ReadBuffer,
+        R: WriteBuffer,
         O: 'a + Operation,
         Sc: Scope<'a>,
     {
@@ -558,8 +558,8 @@ pub trait CommunicatorCollectives: Communicator {
         op: O,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + WriteBuffer,
+        S: ReadBuffer,
+        R: WriteBuffer,
         O: 'a + Operation,
         Sc: Scope<'a>,
     {
@@ -596,8 +596,8 @@ pub trait CommunicatorCollectives: Communicator {
         op: O,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + WriteBuffer,
+        S: ReadBuffer,
+        R: WriteBuffer,
         O: 'a + Operation,
         Sc: Scope<'a>,
     {
@@ -1030,7 +1030,7 @@ pub trait Root: AsCommunicator {
         mut recvbuf: R,
     ) -> RecvRequest<'a, R, Sc>
     where
-        R: 'a + WriteBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1060,7 +1060,7 @@ pub trait Root: AsCommunicator {
     /// 5.12.3
     fn immediate_gather_into<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
@@ -1099,8 +1099,8 @@ pub trait Root: AsCommunicator {
         mut recvbuf: R,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + WriteBuffer,
+        S: ReadBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
@@ -1139,7 +1139,7 @@ pub trait Root: AsCommunicator {
         sendbuf: S,
     ) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
@@ -1179,8 +1179,8 @@ pub trait Root: AsCommunicator {
         mut recvbuf: R,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + PartitionedBufferMut,
+        S: ReadBuffer,
+        R: PartitionedBufferMut,
         Sc: Scope<'a>,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
@@ -1215,7 +1215,7 @@ pub trait Root: AsCommunicator {
     /// 5.12.4
     fn immediate_scatter_into<'a, Sc, R>(&self, scope: Sc, mut recvbuf: R) -> RecvRequest<'a, R, Sc>
     where
-        R: 'a + WriteBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
@@ -1254,8 +1254,8 @@ pub trait Root: AsCommunicator {
         mut recvbuf: R,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + WriteBuffer,
+        S: ReadBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
@@ -1294,7 +1294,7 @@ pub trait Root: AsCommunicator {
         mut recvbuf: R,
     ) -> RecvRequest<'a, R, Sc>
     where
-        R: 'a + WriteBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
@@ -1334,8 +1334,8 @@ pub trait Root: AsCommunicator {
         mut recvbuf: R,
     ) -> RecvRequest<'a, R, Sc>
     where
-        S: 'a + PartitionedBuffer,
-        R: 'a + WriteBuffer,
+        S: PartitionedBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
@@ -1376,7 +1376,7 @@ pub trait Root: AsCommunicator {
         op: O,
     ) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         O: 'a + Operation,
         Sc: Scope<'a>,
     {
@@ -1417,8 +1417,8 @@ pub trait Root: AsCommunicator {
         op: O,
     ) -> SendRecvRequest<'a, S, R, Sc>
     where
-        S: 'a + ReadBuffer,
-        R: 'a + WriteBuffer,
+        S: ReadBuffer,
+        R: WriteBuffer,
         O: 'a + Operation,
         Sc: Scope<'a>,
     {

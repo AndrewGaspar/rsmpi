@@ -12,12 +12,14 @@ fn main() {
     let rank = world.rank();
     let size = world.size();
 
+    let my_data = vec![rank; size as usize];
+
     // send vec![rank; size] left and right
     let left_requests = if rank > 0 {
         let left_process = world.process_at_rank(rank - 1);
 
         Some((
-            left_process.immediate_send(StaticScope, vec![rank; size as usize]),
+            left_process.immediate_send(StaticScope, &my_data[..]),
             left_process.immediate_receive_into(StaticScope, vec![0; size as usize]),
         ))
     } else {
@@ -28,7 +30,7 @@ fn main() {
         let right_process = world.process_at_rank(rank + 1);
 
         Some((
-            right_process.immediate_send(StaticScope, vec![rank; size as usize]),
+            right_process.immediate_send(StaticScope, &my_data[..]),
             right_process.immediate_receive_into(StaticScope, vec![0; size as usize]),
         ))
     } else {
@@ -52,10 +54,12 @@ fn main() {
     });
 
     if let Some(sreq) = left_send {
-        sreq.wait();
+        let (send_data, _) = sreq.wait_send();
+        assert_eq!(&my_data[..], send_data);
     }
 
     if let Some(sreq) = right_send {
-        sreq.wait();
+        let (send_data, _) = sreq.wait_send();
+        assert_eq!(&my_data[..], send_data);
     }
 }

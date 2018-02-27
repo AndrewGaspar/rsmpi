@@ -263,7 +263,7 @@ pub unsafe trait Source: AsCommunicator {
         tag: Tag,
     ) -> RecvRequest<'a, R, Sc>
     where
-        R: 'a + WriteBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -293,7 +293,7 @@ pub unsafe trait Source: AsCommunicator {
     /// 3.7.2
     fn immediate_receive_into<'a, Sc, R>(&self, scope: Sc, recvbuf: R) -> RecvRequest<'a, R, Sc>
     where
-        R: 'a + WriteBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         self.immediate_receive_into_with_tag(
@@ -648,7 +648,7 @@ pub trait Destination: AsCommunicator {
         tag: Tag,
     ) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -678,7 +678,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_send<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         self.immediate_send_with_tag(scope, sendbuf, Tag::default())
@@ -698,7 +698,7 @@ pub trait Destination: AsCommunicator {
         tag: Tag,
     ) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -729,7 +729,7 @@ pub trait Destination: AsCommunicator {
         sendbuf: S,
     ) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         self.immediate_buffered_send_with_tag(scope, sendbuf, Tag::default())
@@ -749,7 +749,7 @@ pub trait Destination: AsCommunicator {
         tag: Tag,
     ) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -776,7 +776,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_synchronous_send<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         self.immediate_synchronous_send_with_tag(scope, sendbuf, Tag::default())
@@ -796,7 +796,7 @@ pub trait Destination: AsCommunicator {
         tag: Tag,
     ) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -827,7 +827,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_ready_send<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> SendRequest<'a, S, Sc>
     where
-        S: 'a + ReadBuffer,
+        S: ReadBuffer,
         Sc: Scope<'a>,
     {
         self.immediate_ready_send_with_tag(scope, sendbuf, Tag::default())
@@ -957,7 +957,7 @@ impl Message {
         mut recvbuf: R,
     ) -> RecvRequest<'a, R, Sc>
     where
-        R: 'a + WriteBuffer,
+        R: WriteBuffer,
         Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
