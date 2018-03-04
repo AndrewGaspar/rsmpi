@@ -264,10 +264,10 @@ impl<'a, Sc: Scope<'a>, S, R> Request<'a, Sc, S, R> {
         debug_assert!(!request.is_handle_null());
         scope.register();
         Self {
-            request: request,
-            scope: scope,
-            send_data: send_data,
-            recv_data: recv_data,
+            request,
+            scope,
+            send_data,
+            recv_data,
             phantom: Default::default(),
         }
     }
