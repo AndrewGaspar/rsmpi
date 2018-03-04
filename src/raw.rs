@@ -90,7 +90,7 @@ fn to_statuses_ptr_mut(statuses: Option<&mut [MPI_Status]>) -> (usize, *mut MPI_
 }
 
 /// Test to see if the request has been completed. If it has been, request
-/// is set to RSMPI_REQUEST_NULL, and Some(status) is returned. If not, request
+/// is set to `RSMPI_REQUEST_NULL`, and Some(status) is returned. If not, request
 /// is not modified, and None is returned.
 ///
 /// # Standard section(s)
@@ -174,7 +174,7 @@ pub enum TestAny {
     Completed(i32),
 }
 
-/// `test_any` is a safe, low-level interface to MPI_Testany.
+/// `test_any` is a safe, low-level interface to `MPI_Testany`.
 ///
 /// `test_any` will check if any active requests in the `requests` slice are completed. If so, it
 /// will deallocate the request and mark it as null in the `requests` slice. In all cases it will
@@ -211,10 +211,10 @@ pub fn test_any(requests: &mut [MPI_Request], status: Option<&mut MPI_Status>) -
     }
 }
 
-/// `wait_all` is a safe, low-level interface to MPI_Waitall.
+/// `wait_all` is a safe, low-level interface to `MPI_Waitall`.
 ///
 /// `wait_all` will block until all requests in the `requests` slice are completed. When `wait_all`
-/// returns, all requests in the `requests` slice will be MPI_REQUEST_NULL. If `Some(statuses)` is
+/// returns, all requests in the `requests` slice will be `MPI_REQUEST_NULL`. If `Some(statuses)` is
 /// provided, the slices[i] will contain the status for `requests[i]`.
 ///
 /// Prefer `RequestCollection::wait_all` in typical code.
@@ -233,7 +233,7 @@ pub fn wait_all(requests: &mut [MPI_Request], statuses: Option<&mut [MPI_Status]
     }
 }
 
-/// `test_all` is a safe, low-level interface to MPI_Testall.
+/// `test_all` is a safe, low-level interface to `MPI_Testall`.
 ///
 /// If all active `requests` are complete, it returns `true` immediately. `statuses` will contain
 /// the status of each completed request, where `statuses[i]` is the completion `status` for
@@ -266,7 +266,7 @@ pub fn test_all(requests: &mut [MPI_Request], statuses: Option<&mut [MPI_Status]
     flag != 0
 }
 
-/// `wait_some` is a safe, low-level interface to MPI_Waitsome.
+/// `wait_some` is a safe, low-level interface to `MPI_Waitsome`.
 ///
 /// `wait_some` blocks until at least 1 request is completed if any requests are active.
 ///
@@ -312,7 +312,7 @@ pub fn wait_some(
     }
 }
 
-/// `test_some` is a safe, low-level interface to MPI_Waitsome.
+/// `test_some` is a safe, low-level interface to `MPI_Waitsome`.
 ///
 /// `Some(count)` is returned if there are oustanding active requests. `count`, which will be 0 or
 /// greater, indicates the number of requests that are completed. `indices[0..count]` will contain
