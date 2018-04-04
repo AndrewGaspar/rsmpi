@@ -174,7 +174,7 @@ pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
 /// 3.7.1
 #[must_use]
 #[derive(Debug)]
-pub struct Request<'a, Sc: Scope<'a> = StaticScope, S = (), R = ()> {
+pub struct Request<'a, Sc: Scope<'a>, S = (), R = ()> {
     request: MPI_Request,
     scope: Sc,
     send_data: S,
@@ -1248,9 +1248,7 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
 ///
 /// See `examples/immediate.rs`
 #[derive(Debug)]
-pub struct WaitGuard<'a, Sc: Scope<'a> = StaticScope, S = (), R = ()>(
-    Option<Request<'a, Sc, S, R>>,
-);
+pub struct WaitGuard<'a, Sc: Scope<'a>, S = (), R = ()>(Option<Request<'a, Sc, S, R>>);
 
 impl<'a, Sc: Scope<'a>, S, R> Drop for WaitGuard<'a, Sc, S, R> {
     fn drop(&mut self) {
@@ -1294,7 +1292,7 @@ impl<'a, Sc: Scope<'a>, S, R> WaitGuard<'a, Sc, S, R> {
 ///
 /// See `examples/immediate.rs`
 #[derive(Debug)]
-pub struct CancelGuard<'a, Sc: Scope<'a> = StaticScope, S = (), R = ()>(WaitGuard<'a, Sc, S, R>);
+pub struct CancelGuard<'a, Sc: Scope<'a>, S = (), R = ()>(WaitGuard<'a, Sc, S, R>);
 
 impl<'a, Sc: Scope<'a>, S, R> Drop for CancelGuard<'a, Sc, S, R> {
     fn drop(&mut self) {
