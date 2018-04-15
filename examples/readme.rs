@@ -15,11 +15,7 @@ fn main() {
 
     let msg = vec![rank, 2 * rank, 4 * rank];
     mpi::request::scope(|_scope| {
-        let _sreq = WaitGuard::from(
-            world
-                .process_at_rank(next_rank)
-                .immediate_send(&msg[..]),
-        );
+        let _sreq = WaitGuard::from(world.process_at_rank(next_rank).immediate_send(&msg[..]));
 
         let (msg, status) = world.any_process().receive_vec();
 

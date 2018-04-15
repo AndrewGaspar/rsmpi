@@ -37,13 +37,19 @@ fn main() {
     };
 
     let left_send = left_requests.map(|(left_send, left_recv)| {
-        assert_eq!(vec![rank - 1; size as usize], left_recv.wait_data_without_status());
+        assert_eq!(
+            vec![rank - 1; size as usize],
+            left_recv.wait_data_without_status()
+        );
 
         left_send
     });
 
     let right_send = right_requests.map(|(right_send, right_recv)| {
-        assert_eq!(vec![rank + 1; size as usize], right_recv.wait_data_without_status());
+        assert_eq!(
+            vec![rank + 1; size as usize],
+            right_recv.wait_data_without_status()
+        );
 
         right_send
     });

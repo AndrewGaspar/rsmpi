@@ -24,11 +24,7 @@ fn main() {
         // Creates, initiates, and collects send requests into a RequestCollection.
         let mut send_requests = (0..num_targets)
             .map(|r| r * 2 + lbound)
-            .map(|target| {
-                world
-                    .process_at_rank(target as i32)
-                    .immediate_send(&rank)
-            })
+            .map(|target| world.process_at_rank(target as i32).immediate_send(&rank))
             .collect_requests();
 
         // Creates, initiates, and collects receive requests into a RequestCollection.

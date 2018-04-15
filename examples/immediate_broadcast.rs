@@ -32,9 +32,7 @@ fn main() {
         a = std::iter::repeat(0_u64).take(n).collect::<Vec<_>>();
     }
     mpi::request::scope(|_scope| {
-        root_process
-            .immediate_broadcast_into(&mut a[..])
-            .wait();
+        root_process.immediate_broadcast_into(&mut a[..]).wait();
     });
     println!("Rank {} received value: {:?}.", world.rank(), &a[..]);
     assert_eq!(&a[..], &[2, 4, 8, 16]);

@@ -19,11 +19,7 @@ fn main() {
         mpi::request::scope(|_scope| {
             let reqs = v.iter_mut()
                 .zip(1..)
-                .map(|(x, i)| {
-                    world
-                        .process_at_rank(i as Rank)
-                        .immediate_receive_into(x)
-                })
+                .map(|(x, i)| world.process_at_rank(i as Rank).immediate_receive_into(x))
                 .collect::<Vec<_>>();
             world.barrier();
             for req in reqs {

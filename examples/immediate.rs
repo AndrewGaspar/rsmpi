@@ -41,10 +41,7 @@ fn main() {
 
     y = 0.0;
     mpi::request::scope(|_scope| {
-        let _sreq: WaitGuard<_> = world
-            .this_process()
-            .immediate_synchronous_send(&x)
-            .into();
+        let _sreq: WaitGuard<_> = world.this_process().immediate_synchronous_send(&x).into();
         let preq = world.any_process().immediate_matched_probe();
         assert!(preq.is_some());
         let (msg, _) = preq.unwrap();

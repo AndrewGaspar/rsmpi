@@ -256,11 +256,7 @@ pub unsafe trait Source: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_receive_into_with_tag<'a, R>(
-        &self,
-        mut recvbuf: R,
-        tag: Tag,
-    ) -> RecvRequest<R>
+    fn immediate_receive_into_with_tag<'a, R>(&self, mut recvbuf: R, tag: Tag) -> RecvRequest<R>
     where
         R: WriteBuffer,
     {
@@ -293,10 +289,7 @@ pub unsafe trait Source: AsCommunicator {
     where
         R: WriteBuffer,
     {
-        self.immediate_receive_into_with_tag(
-            recvbuf,
-            unsafe_extern_static!(ffi::RSMPI_ANY_TAG),
-        )
+        self.immediate_receive_into_with_tag(recvbuf, unsafe_extern_static!(ffi::RSMPI_ANY_TAG))
     }
 
     /// Initiate a non-blocking receive operation for messages matching tag `tag`.
@@ -636,11 +629,7 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_send_with_tag<S>(
-        &self,
-        sendbuf: S,
-        tag: Tag,
-    ) -> SendRequest<S>
+    fn immediate_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
         S: ReadBuffer,
     {
@@ -683,11 +672,7 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_buffered_send_with_tag<S>(
-        &self,
-        sendbuf: S,
-        tag: Tag,
-    ) -> SendRequest<S>
+    fn immediate_buffered_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
         S: ReadBuffer,
     {
@@ -713,10 +698,7 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_buffered_send<S: ReadBuffer>(
-        &self,
-        sendbuf: S,
-    ) -> SendRequest<S>
+    fn immediate_buffered_send<S: ReadBuffer>(&self, sendbuf: S) -> SendRequest<S>
     where
         S: ReadBuffer,
     {
@@ -730,11 +712,7 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_synchronous_send_with_tag<S>(
-        &self,
-        sendbuf: S,
-        tag: Tag,
-    ) -> SendRequest<S>
+    fn immediate_synchronous_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
         S: ReadBuffer,
     {
@@ -774,11 +752,7 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_ready_send_with_tag<S>(
-        &self,
-        sendbuf: S,
-        tag: Tag,
-    ) -> SendRequest<S>
+    fn immediate_ready_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
         S: ReadBuffer,
     {
@@ -933,10 +907,7 @@ impl Message {
     /// # Standard section(s)
     ///
     /// 3.8.3
-    pub fn immediate_matched_receive_into<R>(
-        mut self,
-        mut recvbuf: R,
-    ) -> RecvRequest<R>
+    pub fn immediate_matched_receive_into<R>(mut self, mut recvbuf: R) -> RecvRequest<R>
     where
         R: WriteBuffer,
     {

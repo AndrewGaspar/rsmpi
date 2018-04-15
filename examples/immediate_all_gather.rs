@@ -15,9 +15,7 @@ fn main() {
     let mut a = vec![0u64; count];
 
     mpi::request::scope(|_scope| {
-        world
-            .immediate_all_gather_into(&i, &mut a[..])
-            .wait();
+        world.immediate_all_gather_into(&i, &mut a[..]).wait();
     });
 
     if world.rank() == root_rank {
@@ -37,9 +35,7 @@ fn main() {
     let mut t = vec![0u64; count * count];
 
     mpi::request::scope(|_scope| {
-        world
-            .immediate_all_gather_into(&a[..], &mut t[..])
-            .wait();
+        world.immediate_all_gather_into(&a[..], &mut t[..]).wait();
     });
 
     if world.rank() == root_rank {

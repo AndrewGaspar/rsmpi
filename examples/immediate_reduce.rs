@@ -24,8 +24,7 @@ fn test_user_operations<C: Communicator>(comm: C) {
     let size = comm.size();
     let mut c = 0;
     mpi::request::scope(|_scope| {
-        comm.immediate_all_reduce_into(&rank, &mut c, &op)
-            .wait();
+        comm.immediate_all_reduce_into(&rank, &mut c, &op).wait();
     });
     assert_eq!(c, size * (size - 1) / 2);
 }
@@ -97,9 +96,7 @@ fn main() {
     let mut d = 0;
     let op = unsafe { UnsafeUserOperation::commutative(unsafe_add) };
     mpi::request::scope(|_scope| {
-        world
-            .immediate_all_reduce_into(&rank, &mut d, &op)
-            .wait();
+        world.immediate_all_reduce_into(&rank, &mut d, &op).wait();
     });
     assert_eq!(d, size * (size - 1) / 2);
 }

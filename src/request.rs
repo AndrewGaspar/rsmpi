@@ -261,15 +261,9 @@ impl<Owned> Request<Owned> {
     /// - The request must not be registered with the given scope.
     /// - If `data` is a reference, the referenced must live at least as long as the MPI Request.
     ///
-    pub unsafe fn from_raw(
-        request: MPI_Request,
-        data: Owned,
-    ) -> Self {
+    pub unsafe fn from_raw(request: MPI_Request, data: Owned) -> Self {
         debug_assert!(!request.is_handle_null());
-        Self {
-            request,
-            data,
-        }
+        Self { request, data }
     }
 }
 
@@ -286,8 +280,7 @@ impl<Owned> AsyncRequest<Owned> for Request<Owned> {
 }
 
 /// Collects an iterator of `Request` objects into a `RequestCollection` object
-pub trait CollectRequests<Owned>
-    : IntoIterator<Item = Request<Owned>> {
+pub trait CollectRequests<Owned>: IntoIterator<Item = Request<Owned>> {
     /// Consumes and converts an iterator of `Requst` objects into a `RequestCollection` object.
     fn collect_requests(self) -> RequestCollection<Owned>;
 }
@@ -296,8 +289,7 @@ impl<Owned, T> CollectRequests<Owned> for T
 where
     T: IntoIterator<Item = Request<Owned>>,
 {
-    fn collect_requests(self) -> RequestCollection<Owned>
-    {
+    fn collect_requests(self) -> RequestCollection<Owned> {
         RequestCollection::from_request_iter(self)
     }
 }
@@ -377,10 +369,7 @@ impl<Owned> Drop for RequestCollection<Owned> {
 impl<Owned> RequestCollection<Owned> {
     /// Constructs a `RequestCollection` from a Vec of `MPI_Request` handles and a scope object.
     /// `requests` are allowed to be null, but they must not be persistent requests.
-    pub fn from_raw(
-        requests: Vec<MPI_Request>,
-        mut data: Vec<Owned>,
-    ) -> Self {
+    pub fn from_raw(requests: Vec<MPI_Request>, mut data: Vec<Owned>) -> Self {
         assert_eq!(
             requests.len(),
             data.len(),

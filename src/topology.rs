@@ -20,7 +20,7 @@
 //! - **7**: Process topologies
 //! - **Parts of sections**: 8, 10, 12
 use std::{mem, process};
-use std::os::raw::{c_int, c_char};
+use std::os::raw::{c_char, c_int};
 use std::ffi::{CStr, CString};
 
 use super::Tag;

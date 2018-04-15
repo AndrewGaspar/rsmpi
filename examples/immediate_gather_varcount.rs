@@ -46,9 +46,7 @@ fn main() {
         println!("{:?}", buf);
     } else {
         mpi::request::scope(|_scope| {
-            root_process
-                .immediate_gather_varcount_into(&msg[..])
-                .wait();
+            root_process.immediate_gather_varcount_into(&msg[..]).wait();
         });
     }
 }

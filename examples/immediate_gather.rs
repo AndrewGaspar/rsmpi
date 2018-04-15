@@ -71,9 +71,7 @@ fn main() {
             let mut rv =
                 unsafe { MutView::with_count_and_datatype(&mut t[..], count as Count, &d) };
             mpi::request::scope(|_scope| {
-                root_process
-                    .immediate_gather_into_root(&sv, &mut rv)
-                    .wait();
+                root_process.immediate_gather_into_root(&sv, &mut rv).wait();
             });
         }
 

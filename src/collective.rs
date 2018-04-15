@@ -322,11 +322,7 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.5
-    fn immediate_all_gather_into<S, R>(
-        &self,
-        sendbuf: S,
-        mut recvbuf: R,
-    ) -> SendRecvRequest<S, R>
+    fn immediate_all_gather_into<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: WriteBuffer,
@@ -393,11 +389,7 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.6
-    fn immediate_all_to_all_into<S, R>(
-        &self,
-        sendbuf: S,
-        mut recvbuf: R,
-    ) -> SendRecvRequest<S, R>
+    fn immediate_all_to_all_into<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: WriteBuffer,
@@ -1005,10 +997,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.2
-    fn immediate_broadcast_into<R>(
-        &self,
-        mut recvbuf: R,
-    ) -> RecvRequest<R>
+    fn immediate_broadcast_into<R>(&self, mut recvbuf: R) -> RecvRequest<R>
     where
         R: WriteBuffer,
     {
@@ -1070,11 +1059,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
-    fn immediate_gather_into_root<S, R>(
-        &self,
-        sendbuf: S,
-        mut recvbuf: R,
-    ) -> SendRecvRequest<S, R>
+    fn immediate_gather_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: WriteBuffer,
@@ -1109,10 +1094,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
-    fn immediate_gather_varcount_into<S>(
-        &self,
-        sendbuf: S,
-    ) -> SendRequest<S>
+    fn immediate_gather_varcount_into<S>(&self, sendbuf: S) -> SendRequest<S>
     where
         S: ReadBuffer,
     {
@@ -1218,11 +1200,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
-    fn immediate_scatter_into_root<S, R>(
-        &self,
-        sendbuf: S,
-        mut recvbuf: R,
-    ) -> SendRecvRequest<S, R>
+    fn immediate_scatter_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: WriteBuffer,
@@ -1257,10 +1235,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
-    fn immediate_scatter_varcount_into<R>(
-        &self,
-        mut recvbuf: R,
-    ) -> RecvRequest<R>
+    fn immediate_scatter_varcount_into<R>(&self, mut recvbuf: R) -> RecvRequest<R>
     where
         R: WriteBuffer,
     {
@@ -1334,11 +1309,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.7
-    fn immediate_reduce_into<S, Op>(
-        &self,
-        sendbuf: S,
-        op: Op,
-    ) -> Request<(S, Op)>
+    fn immediate_reduce_into<S, Op>(&self, sendbuf: S, op: Op) -> Request<(S, Op)>
     where
         S: ReadBuffer,
         Op: Operation,

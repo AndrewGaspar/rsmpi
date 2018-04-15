@@ -13,9 +13,7 @@ fn main() {
     let mut v = vec![0; size as usize];
 
     mpi::request::scope(|_scope| {
-        world
-            .immediate_all_to_all_into(&u[..], &mut v[..])
-            .wait();
+        world.immediate_all_to_all_into(&u[..], &mut v[..]).wait();
     });
 
     println!("u: {:?}", u);
