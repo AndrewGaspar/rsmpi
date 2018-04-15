@@ -176,16 +176,16 @@ pub unsafe trait Source: AsCommunicator {
         self.receive_with_tag(unsafe_extern_static!(ffi::RSMPI_ANY_TAG))
     }
 
-    /// Receive a message into a `WriteBuffer`.
+    /// Receive a message into a `BufferMut`.
     ///
-    /// Receive a message from `Source` `&self` tagged `tag` into `WriteBuffer` `recvbuf`.
+    /// Receive a message from `Source` `&self` tagged `tag` into `BufferMut` `recvbuf`.
     ///
     /// # Standard section(s)
     ///
     /// 3.2.4
     fn receive_into_with_tag<R>(&self, mut recvbuf: R, tag: Tag) -> Status
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         let mut status: MPI_Status = unsafe { mem::uninitialized() };
         unsafe {
@@ -202,16 +202,16 @@ pub unsafe trait Source: AsCommunicator {
         Status(status)
     }
 
-    /// Receive a message into a `WriteBuffer`.
+    /// Receive a message into a `BufferMut`.
     ///
-    /// Receive a message from `Source` `&self` into `WriteBuffer` `recvbuf`.
+    /// Receive a message from `Source` `&self` into `BufferMut` `recvbuf`.
     ///
     /// # Standard section(s)
     ///
     /// 3.2.4
     fn receive_into<R>(&self, recvbuf: R) -> Status
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         self.receive_into_with_tag(recvbuf, unsafe_extern_static!(ffi::RSMPI_ANY_TAG))
     }
@@ -258,7 +258,7 @@ pub unsafe trait Source: AsCommunicator {
     /// 3.7.2
     fn immediate_receive_into_with_tag<'a, R>(&self, mut recvbuf: R, tag: Tag) -> RecvRequest<R>
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -287,7 +287,7 @@ pub unsafe trait Source: AsCommunicator {
     /// 3.7.2
     fn immediate_receive_into<'a, R>(&self, recvbuf: R) -> RecvRequest<R>
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         self.immediate_receive_into_with_tag(recvbuf, unsafe_extern_static!(ffi::RSMPI_ANY_TAG))
     }
@@ -454,14 +454,14 @@ pub trait Destination: AsCommunicator {
 
     /// Blocking standard mode send operation
     ///
-    /// Send the contents of a `ReadBuffer` to the `Destination` `&self` and tag it.
+    /// Send the contents of a `Buffer` to the `Destination` `&self` and tag it.
     ///
     /// # Standard section(s)
     ///
     /// 3.2.1
     fn send_with_tag<S>(&self, sendbuf: S, tag: Tag)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         unsafe {
             ffi::MPI_Send(
@@ -477,7 +477,7 @@ pub trait Destination: AsCommunicator {
 
     /// Blocking standard mode send operation
     ///
-    /// Send the contents of a `ReadBuffer` to the `Destination` `&self`.
+    /// Send the contents of a `Buffer` to the `Destination` `&self`.
     ///
     /// # Examples
     ///
@@ -498,21 +498,21 @@ pub trait Destination: AsCommunicator {
     /// 3.2.1
     fn send<S>(&self, sendbuf: S)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         self.send_with_tag(sendbuf, Tag::default())
     }
 
     /// Blocking buffered mode send operation
     ///
-    /// Send the contents of a `ReadBuffer` to the `Destination` `&self` and tag it.
+    /// Send the contents of a `Buffer` to the `Destination` `&self` and tag it.
     ///
     /// # Standard section(s)
     ///
     /// 3.4
     fn buffered_send_with_tag<S>(&self, sendbuf: S, tag: Tag)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         unsafe {
             ffi::MPI_Bsend(
@@ -528,21 +528,21 @@ pub trait Destination: AsCommunicator {
 
     /// Blocking buffered mode send operation
     ///
-    /// Send the contents of a `ReadBuffer` to the `Destination` `&self`.
+    /// Send the contents of a `Buffer` to the `Destination` `&self`.
     ///
     /// # Standard section(s)
     ///
     /// 3.4
     fn buffered_send<S>(&self, sendbuf: S)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         self.buffered_send_with_tag(sendbuf, Tag::default())
     }
 
     /// Blocking synchronous mode send operation
     ///
-    /// Send the contents of a `ReadBuffer` to the `Destination` `&self` and tag it.
+    /// Send the contents of a `Buffer` to the `Destination` `&self` and tag it.
     ///
     /// Completes only once the matching receive operation has started.
     ///
@@ -551,7 +551,7 @@ pub trait Destination: AsCommunicator {
     /// 3.4
     fn synchronous_send_with_tag<S>(&self, sendbuf: S, tag: Tag)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         unsafe {
             ffi::MPI_Ssend(
@@ -567,7 +567,7 @@ pub trait Destination: AsCommunicator {
 
     /// Blocking synchronous mode send operation
     ///
-    /// Send the contents of a `ReadBuffer` to the `Destination` `&self`.
+    /// Send the contents of a `Buffer` to the `Destination` `&self`.
     ///
     /// Completes only once the matching receive operation has started.
     ///
@@ -576,14 +576,14 @@ pub trait Destination: AsCommunicator {
     /// 3.4
     fn synchronous_send<S>(&self, sendbuf: S)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         self.synchronous_send_with_tag(sendbuf, Tag::default())
     }
 
     /// Blocking ready mode send operation
     ///
-    /// Send the contents of a `ReadBuffer` to the `Destination` `&self` and tag it.
+    /// Send the contents of a `Buffer` to the `Destination` `&self` and tag it.
     ///
     /// Fails if the matching receive operation has not been posted.
     ///
@@ -592,7 +592,7 @@ pub trait Destination: AsCommunicator {
     /// 3.4
     fn ready_send_with_tag<S>(&self, sendbuf: S, tag: Tag)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         unsafe {
             ffi::MPI_Rsend(
@@ -608,7 +608,7 @@ pub trait Destination: AsCommunicator {
 
     /// Blocking ready mode send operation
     ///
-    /// Send the contents of a `ReadBuffer` to the `Destination` `&self`.
+    /// Send the contents of a `Buffer` to the `Destination` `&self`.
     ///
     /// Fails if the matching receive operation has not been posted.
     ///
@@ -617,7 +617,7 @@ pub trait Destination: AsCommunicator {
     /// 3.4
     fn ready_send<S>(&self, sendbuf: S)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         self.ready_send_with_tag(sendbuf, Tag::default())
     }
@@ -631,7 +631,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -660,7 +660,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_send<S>(&self, sendbuf: S) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         self.immediate_send_with_tag(sendbuf, Tag::default())
     }
@@ -674,7 +674,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_buffered_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -698,9 +698,9 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
-    fn immediate_buffered_send<S: ReadBuffer>(&self, sendbuf: S) -> SendRequest<S>
+    fn immediate_buffered_send<S: Buffer>(&self, sendbuf: S) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         self.immediate_buffered_send_with_tag(sendbuf, Tag::default())
     }
@@ -714,7 +714,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_synchronous_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -740,7 +740,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_synchronous_send<S>(&self, sendbuf: S) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         self.immediate_synchronous_send_with_tag(sendbuf, Tag::default())
     }
@@ -754,7 +754,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_ready_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -784,7 +784,7 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_ready_send<S>(&self, sendbuf: S) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         self.immediate_ready_send_with_tag(sendbuf, Tag::default())
     }
@@ -875,7 +875,7 @@ impl Message {
         (res, status)
     }
 
-    /// Receive a previously probed message into a `ReadBuffer`.
+    /// Receive a previously probed message into a `Buffer`.
     ///
     /// Receive the message `&self` with contents matching `recvbuf`.
     ///
@@ -884,7 +884,7 @@ impl Message {
     /// 3.8.3
     pub fn matched_receive_into<R>(mut self, mut recvbuf: R) -> Status
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         let mut status: MPI_Status = unsafe { mem::uninitialized() };
         unsafe {
@@ -900,7 +900,7 @@ impl Message {
         Status(status)
     }
 
-    /// Asynchronously receive a previously probed message into a `ReadBuffer`.
+    /// Asynchronously receive a previously probed message into a `Buffer`.
     ///
     /// Asynchronously receive the message `&self` with contents matching `recvbuf`.
     ///
@@ -909,7 +909,7 @@ impl Message {
     /// 3.8.3
     pub fn immediate_matched_receive_into<R>(mut self, mut recvbuf: R) -> RecvRequest<R>
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -1046,9 +1046,9 @@ pub fn send_receive_into_with_tags<S, Dst, R, Src>(
     receivetag: Tag,
 ) -> Status
 where
-    S: ReadBuffer,
+    S: Buffer,
     Dst: Destination,
-    R: WriteBuffer,
+    R: BufferMut,
     Src: Source,
 {
     assert_eq!(
@@ -1091,9 +1091,9 @@ pub fn send_receive_into<S, Dst, R, Src>(
     source: &Src,
 ) -> Status
 where
-    S: ReadBuffer,
+    S: Buffer,
     Dst: Destination,
-    R: WriteBuffer,
+    R: BufferMut,
     Src: Source,
 {
     send_receive_into_with_tags(
@@ -1121,7 +1121,7 @@ pub fn send_receive_replace_into_with_tags<R, Dst, Src>(
     receivetag: Tag,
 ) -> Status
 where
-    R: WriteBuffer,
+    R: BufferMut,
     Dst: Destination,
     Src: Source,
 {
@@ -1161,7 +1161,7 @@ pub fn send_receive_replace_into<R, Dst, Src>(
     source: &Src,
 ) -> Status
 where
-    R: WriteBuffer,
+    R: BufferMut,
     Dst: Destination,
     Src: Source,
 {

@@ -55,10 +55,10 @@ pub trait CommunicatorCollectives: Communicator {
 
     /// Gather contents of buffers on all participating processes.
     ///
-    /// After the call completes, the contents of the send `ReadBuffer`s on all processes will be
-    /// concatenated into the receive `WriteBuffer`s on all ranks.
+    /// After the call completes, the contents of the send `Buffer`s on all processes will be
+    /// concatenated into the receive `BufferMut`s on all ranks.
     ///
-    /// All send `ReadBuffer`s must contain the same count of elements.
+    /// All send `Buffer`s must contain the same count of elements.
     ///
     /// # Examples
     ///
@@ -69,8 +69,8 @@ pub trait CommunicatorCollectives: Communicator {
     /// 5.7
     fn all_gather_into<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
     {
         unsafe {
             ffi::MPI_Allgather(
@@ -87,11 +87,11 @@ pub trait CommunicatorCollectives: Communicator {
 
     /// Gather contents of buffers on all participating processes.
     ///
-    /// After the call completes, the contents of the send `ReadBuffer`s on all processes will be
-    /// concatenated into the receive `WriteBuffer`s on all ranks.
+    /// After the call completes, the contents of the send `Buffer`s on all processes will be
+    /// concatenated into the receive `BufferMut`s on all ranks.
     ///
-    /// The send `ReadBuffer`s may contain different counts of elements on different processes. The
-    /// distribution of elements in the receive `WriteBuffer`s is specified via `Partitioned`.
+    /// The send `Buffer`s may contain different counts of elements on different processes. The
+    /// distribution of elements in the receive `BufferMut`s is specified via `Partitioned`.
     ///
     /// # Examples
     ///
@@ -102,7 +102,7 @@ pub trait CommunicatorCollectives: Communicator {
     /// 5.7
     fn all_gather_varcount_into<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
-        S: ReadBuffer,
+        S: Buffer,
         R: PartitionedBufferMut,
     {
         unsafe {
@@ -119,7 +119,7 @@ pub trait CommunicatorCollectives: Communicator {
         }
     }
 
-    /// Distribute the send `ReadBuffer`s from all processes to the receive `WriteBuffer`s on all
+    /// Distribute the send `Buffer`s from all processes to the receive `BufferMut`s on all
     /// processes.
     ///
     /// Each process sends and receives the same count of elements to and from each process.
@@ -133,8 +133,8 @@ pub trait CommunicatorCollectives: Communicator {
     /// 5.8
     fn all_to_all_into<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
     {
         let c_size = self.size();
         unsafe {
@@ -190,8 +190,8 @@ pub trait CommunicatorCollectives: Communicator {
     /// 5.9.6
     fn all_reduce_into<S, R, O>(&self, sendbuf: S, mut recvbuf: R, op: O)
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         O: Operation,
     {
         unsafe {
@@ -219,8 +219,8 @@ pub trait CommunicatorCollectives: Communicator {
     /// 5.10.1
     fn reduce_scatter_block_into<S, R, O>(&self, sendbuf: S, mut recvbuf: R, op: O)
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         O: Operation,
     {
         assert_eq!(recvbuf.count() * self.size(), sendbuf.count());
@@ -248,8 +248,8 @@ pub trait CommunicatorCollectives: Communicator {
     /// 5.11.1
     fn scan_into<S, R, O>(&self, sendbuf: S, mut recvbuf: R, op: O)
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         O: Operation,
     {
         unsafe {
@@ -276,8 +276,8 @@ pub trait CommunicatorCollectives: Communicator {
     /// 5.11.2
     fn exclusive_scan_into<S, R, O>(&self, sendbuf: S, mut recvbuf: R, op: O)
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         O: Operation,
     {
         unsafe {
@@ -324,8 +324,8 @@ pub trait CommunicatorCollectives: Communicator {
     /// 5.12.5
     fn immediate_all_gather_into<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -360,7 +360,7 @@ pub trait CommunicatorCollectives: Communicator {
         mut recvbuf: R,
     ) -> SendRecvRequest<S, R>
     where
-        S: ReadBuffer,
+        S: Buffer,
         R: PartitionedBufferMut,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -391,8 +391,8 @@ pub trait CommunicatorCollectives: Communicator {
     /// 5.12.6
     fn immediate_all_to_all_into<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         let c_size = self.size();
@@ -460,8 +460,8 @@ pub trait CommunicatorCollectives: Communicator {
         op: Op,
     ) -> Request<(S, R, Op)>
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         Op: Operation,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -497,8 +497,8 @@ pub trait CommunicatorCollectives: Communicator {
         op: Op,
     ) -> Request<(S, R, Op)>
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         Op: Operation,
     {
         assert_eq!(recvbuf.count() * self.size(), sendbuf.count());
@@ -534,8 +534,8 @@ pub trait CommunicatorCollectives: Communicator {
         op: Op,
     ) -> Request<(S, R, Op)>
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         Op: Operation,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -570,8 +570,8 @@ pub trait CommunicatorCollectives: Communicator {
         op: Op,
     ) -> Request<(S, R, Op)>
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         Op: Operation,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -602,7 +602,7 @@ pub trait Root: AsCommunicator {
 
     /// Broadcast of the contents of a buffer
     ///
-    /// After the call completes, the `WriteBuffer` on all processes in the `Communicator` of the
+    /// After the call completes, the `BufferMut` on all processes in the `Communicator` of the
     /// `Root` `&self` will contain what it contains on the `Root`.
     ///
     /// # Examples
@@ -614,7 +614,7 @@ pub trait Root: AsCommunicator {
     /// 5.4
     fn broadcast_into<Buf>(&self, mut buffer: Buf)
     where
-        Buf: WriteBuffer,
+        Buf: BufferMut,
     {
         unsafe {
             ffi::MPI_Bcast(
@@ -629,10 +629,10 @@ pub trait Root: AsCommunicator {
 
     /// Gather contents of buffers on `Root`.
     ///
-    /// After the call completes, the contents of the `ReadBuffer`s on all ranks will be
-    /// concatenated into the `WriteBuffer` on `Root`.
+    /// After the call completes, the contents of the `Buffer`s on all ranks will be
+    /// concatenated into the `BufferMut` on `Root`.
     ///
-    /// All send `ReadBuffer`s must have the same count of elements.
+    /// All send `Buffer`s must have the same count of elements.
     ///
     /// This function must be called on all non-root processes.
     ///
@@ -645,7 +645,7 @@ pub trait Root: AsCommunicator {
     /// 5.5
     fn gather_into<S>(&self, sendbuf: S)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         unsafe {
@@ -664,10 +664,10 @@ pub trait Root: AsCommunicator {
 
     /// Gather contents of buffers on `Root`.
     ///
-    /// After the call completes, the contents of the `ReadBuffer`s on all ranks will be
-    /// concatenated into the `WriteBuffer` on `Root`.
+    /// After the call completes, the contents of the `Buffer`s on all ranks will be
+    /// concatenated into the `BufferMut` on `Root`.
     ///
-    /// All send `ReadBuffer`s must have the same count of elements.
+    /// All send `Buffer`s must have the same count of elements.
     ///
     /// This function must be called on the root process.
     ///
@@ -680,8 +680,8 @@ pub trait Root: AsCommunicator {
     /// 5.5
     fn gather_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         unsafe {
@@ -701,10 +701,10 @@ pub trait Root: AsCommunicator {
 
     /// Gather contents of buffers on `Root`.
     ///
-    /// After the call completes, the contents of the `ReadBuffer`s on all ranks will be
+    /// After the call completes, the contents of the `Buffer`s on all ranks will be
     /// concatenated into the `PartitionedBufferMut` on `Root`.
     ///
-    /// The send `ReadBuffer`s may contain different counts of elements on different processes. The
+    /// The send `Buffer`s may contain different counts of elements on different processes. The
     /// distribution of elements in the receive `PartitionedBufferMut` is specified via
     /// `Partitioned`.
     ///
@@ -719,7 +719,7 @@ pub trait Root: AsCommunicator {
     /// 5.5
     fn gather_varcount_into<S>(&self, sendbuf: S)
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         unsafe {
@@ -739,10 +739,10 @@ pub trait Root: AsCommunicator {
 
     /// Gather contents of buffers on `Root`.
     ///
-    /// After the call completes, the contents of the `ReadBuffer`s on all ranks will be
+    /// After the call completes, the contents of the `Buffer`s on all ranks will be
     /// concatenated into the `PartitionedBufferMut` on `Root`.
     ///
-    /// The send `ReadBuffer`s may contain different counts of elements on different processes. The
+    /// The send `Buffer`s may contain different counts of elements on different processes. The
     /// distribution of elements in the receive `PartitionedBufferMut` is specified via
     /// `Partitioned`.
     ///
@@ -757,7 +757,7 @@ pub trait Root: AsCommunicator {
     /// 5.5
     fn gather_varcount_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
-        S: ReadBuffer,
+        S: Buffer,
         R: PartitionedBufferMut,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
@@ -779,9 +779,9 @@ pub trait Root: AsCommunicator {
     /// Scatter contents of a buffer on the root process to all processes.
     ///
     /// After the call completes each participating process will have received a part of the send
-    /// `ReadBuffer` on the root process.
+    /// `Buffer` on the root process.
     ///
-    /// All send `ReadBuffer`s must have the same count of elements.
+    /// All send `Buffer`s must have the same count of elements.
     ///
     /// This function must be called on all non-root processes.
     ///
@@ -794,7 +794,7 @@ pub trait Root: AsCommunicator {
     /// 5.6
     fn scatter_into<R>(&self, mut recvbuf: R)
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         unsafe {
@@ -814,9 +814,9 @@ pub trait Root: AsCommunicator {
     /// Scatter contents of a buffer on the root process to all processes.
     ///
     /// After the call completes each participating process will have received a part of the send
-    /// `ReadBuffer` on the root process.
+    /// `Buffer` on the root process.
     ///
-    /// All send `ReadBuffer`s must have the same count of elements.
+    /// All send `Buffer`s must have the same count of elements.
     ///
     /// This function must be called on the root process.
     ///
@@ -829,8 +829,8 @@ pub trait Root: AsCommunicator {
     /// 5.6
     fn scatter_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let sendcount = sendbuf.count() / self.as_communicator().size();
@@ -868,7 +868,7 @@ pub trait Root: AsCommunicator {
     /// 5.6
     fn scatter_varcount_into<R>(&self, mut recvbuf: R)
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         unsafe {
@@ -907,7 +907,7 @@ pub trait Root: AsCommunicator {
     fn scatter_varcount_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R)
     where
         S: PartitionedBuffer,
-        R: WriteBuffer,
+        R: BufferMut,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         unsafe {
@@ -939,7 +939,7 @@ pub trait Root: AsCommunicator {
     /// 5.9.1
     fn reduce_into<S, O>(&self, sendbuf: S, op: O)
     where
-        S: ReadBuffer,
+        S: Buffer,
         O: Operation,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
@@ -970,8 +970,8 @@ pub trait Root: AsCommunicator {
     /// 5.9.1
     fn reduce_into_root<S, R, O>(&self, sendbuf: S, mut recvbuf: R, op: O)
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         O: Operation,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
@@ -999,7 +999,7 @@ pub trait Root: AsCommunicator {
     /// 5.12.2
     fn immediate_broadcast_into<R>(&self, mut recvbuf: R) -> RecvRequest<R>
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -1028,7 +1028,7 @@ pub trait Root: AsCommunicator {
     /// 5.12.3
     fn immediate_gather_into<S>(&self, sendbuf: S) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1061,8 +1061,8 @@ pub trait Root: AsCommunicator {
     /// 5.12.3
     fn immediate_gather_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1096,7 +1096,7 @@ pub trait Root: AsCommunicator {
     /// 5.12.3
     fn immediate_gather_varcount_into<S>(&self, sendbuf: S) -> SendRequest<S>
     where
-        S: ReadBuffer,
+        S: Buffer,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1134,7 +1134,7 @@ pub trait Root: AsCommunicator {
         mut recvbuf: R,
     ) -> SendRecvRequest<S, R>
     where
-        S: ReadBuffer,
+        S: Buffer,
         R: PartitionedBufferMut,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
@@ -1169,7 +1169,7 @@ pub trait Root: AsCommunicator {
     /// 5.12.4
     fn immediate_scatter_into<R>(&self, mut recvbuf: R) -> RecvRequest<R>
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1202,8 +1202,8 @@ pub trait Root: AsCommunicator {
     /// 5.12.4
     fn immediate_scatter_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1237,7 +1237,7 @@ pub trait Root: AsCommunicator {
     /// 5.12.4
     fn immediate_scatter_varcount_into<R>(&self, mut recvbuf: R) -> RecvRequest<R>
     where
-        R: WriteBuffer,
+        R: BufferMut,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1276,7 +1276,7 @@ pub trait Root: AsCommunicator {
     ) -> SendRecvRequest<S, R>
     where
         S: PartitionedBuffer,
-        R: WriteBuffer,
+        R: BufferMut,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1311,7 +1311,7 @@ pub trait Root: AsCommunicator {
     /// 5.12.7
     fn immediate_reduce_into<S, Op>(&self, sendbuf: S, op: Op) -> Request<(S, Op)>
     where
-        S: ReadBuffer,
+        S: Buffer,
         Op: Operation,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
@@ -1350,8 +1350,8 @@ pub trait Root: AsCommunicator {
         op: Op,
     ) -> Request<(S, R, Op)>
     where
-        S: ReadBuffer,
-        R: WriteBuffer,
+        S: Buffer,
+        R: BufferMut,
         Op: Operation,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
@@ -1684,8 +1684,8 @@ impl UnsafeUserOperation {
 #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
 pub fn reduce_local_into<S, R, O>(inbuf: S, mut inoutbuf: R, op: O)
 where
-    S: ReadBuffer,
-    R: WriteBuffer,
+    S: Buffer,
+    R: BufferMut,
     O: Operation,
 {
     unsafe {

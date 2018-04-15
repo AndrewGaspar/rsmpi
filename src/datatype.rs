@@ -59,9 +59,8 @@ use raw::traits::*;
 
 /// Datatype traits
 pub mod traits {
-    pub use super::{AsDatatype, Buffer, Collection, Datatype, Equivalence, Partitioned,
-                    PartitionedBuffer, PartitionedBufferMut, Pointer, PointerMut, ReadBuffer,
-                    WriteBuffer};
+    pub use super::{AsDatatype, Buffer, BufferMut, Collection, Datatype, Equivalence, Partitioned,
+                    PartitionedBuffer, PartitionedBufferMut, Pointer, PointerMut};
 }
 
 /// A reference to an MPI data type.
@@ -423,20 +422,6 @@ pub unsafe trait PointerMut {
     fn pointer_mut(&mut self) -> *mut c_void;
 }
 
-/// Implements a buffer with a known length.
-///
-/// Marked as `unsafe` because an incorrect implementation can cause memory
-/// errors.
-pub unsafe trait Buffer: AsDatatype + Collection {
-    /// The type of the exclusive owner of the `Buffer`. If the implementation is borrowing the
-    /// buffer from another source, then `Owner` should be `()`. Otherwise, is a Rust owner of heap
-    /// allocated memory like `Vec<Item>`.
-    type Owner;
-
-    /// Take ownership of the buffer.
-    fn take_ownership(self) -> Self::Owner;
-}
-
 fn check_length(len: usize) -> Count {
     len.value_as()
         .expect("Length of buffer cannout be expressed as an MPI Count.")
@@ -446,20 +431,15 @@ fn check_length(len: usize) -> Count {
 ///
 /// Marked as `unsafe` because an incorrect implementation can cause memory
 /// errors.
-pub unsafe trait ReadBuffer: Buffer + Pointer {}
+pub unsafe trait Buffer: AsDatatype + Collection + Pointer {}
 
 /// Implements buffers that can be written to.
 ///
 /// Marked as `unsafe` because an incorrect implementation can cause memory
 /// errors.
-pub unsafe trait WriteBuffer: Buffer + PointerMut {}
+pub unsafe trait BufferMut: AsDatatype + Collection + PointerMut {}
 
 // impls for &'a T
-unsafe impl<'a, T: Equivalence> Buffer for &'a T {
-    type Owner = ();
-    fn take_ownership(self) -> Self::Owner {}
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for &'a T {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -480,14 +460,9 @@ unsafe impl<'a, T: Equivalence> Pointer for &'a T {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for &'a T {}
+unsafe impl<'a, T: Equivalence> Buffer for &'a T {}
 
 // impls for &'a mut T
-unsafe impl<'a, T: Equivalence> Buffer for &'a mut T {
-    type Owner = ();
-    fn take_ownership(self) -> Self::Owner {}
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for &'a mut T {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -508,7 +483,7 @@ unsafe impl<'a, T: Equivalence> Pointer for &'a mut T {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for &'a mut T {}
+unsafe impl<'a, T: Equivalence> Buffer for &'a mut T {}
 
 unsafe impl<'a, T: Equivalence> PointerMut for &'a mut T {
     fn pointer_mut(&mut self) -> *mut c_void {
@@ -517,14 +492,9 @@ unsafe impl<'a, T: Equivalence> PointerMut for &'a mut T {
     }
 }
 
-unsafe impl<'a, T: Equivalence> WriteBuffer for &'a mut T {}
+unsafe impl<'a, T: Equivalence> BufferMut for &'a mut T {}
 
 // impls for &'a [T]
-unsafe impl<'a, T: Equivalence> Buffer for &'a [T] {
-    type Owner = ();
-    fn take_ownership(self) -> Self::Owner {}
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for &'a [T] {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -544,14 +514,9 @@ unsafe impl<'a, T: Equivalence> Pointer for &'a [T] {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for &'a [T] {}
+unsafe impl<'a, T: Equivalence> Buffer for &'a [T] {}
 
 // impls for &'a mut [T]
-unsafe impl<'a, T: Equivalence> Buffer for &'a mut [T] {
-    type Owner = ();
-    fn take_ownership(self) -> Self::Owner {}
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for &'a mut [T] {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -571,7 +536,7 @@ unsafe impl<'a, T: Equivalence> Pointer for &'a mut [T] {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for &'a mut [T] {}
+unsafe impl<'a, T: Equivalence> Buffer for &'a mut [T] {}
 
 unsafe impl<'a, T: Equivalence> PointerMut for &'a mut [T] {
     fn pointer_mut(&mut self) -> *mut c_void {
@@ -579,16 +544,9 @@ unsafe impl<'a, T: Equivalence> PointerMut for &'a mut [T] {
     }
 }
 
-unsafe impl<'a, T: Equivalence> WriteBuffer for &'a mut [T] {}
+unsafe impl<'a, T: Equivalence> BufferMut for &'a mut [T] {}
 
 // impls for Box<T>
-unsafe impl<'a, T: Equivalence> Buffer for Box<T> {
-    type Owner = Self;
-    fn take_ownership(self) -> Self::Owner {
-        self
-    }
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for Box<T> {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -609,7 +567,7 @@ unsafe impl<'a, T: Equivalence> Pointer for Box<T> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for Box<T> {}
+unsafe impl<'a, T: Equivalence> Buffer for Box<T> {}
 
 unsafe impl<'a, T: Equivalence> PointerMut for Box<T> {
     fn pointer_mut(&mut self) -> *mut c_void {
@@ -618,16 +576,9 @@ unsafe impl<'a, T: Equivalence> PointerMut for Box<T> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> WriteBuffer for Box<T> {}
+unsafe impl<'a, T: Equivalence> BufferMut for Box<T> {}
 
 // impls for Box<[T]>
-unsafe impl<'a, T: Equivalence> Buffer for Box<[T]> {
-    type Owner = Self;
-    fn take_ownership(self) -> Self::Owner {
-        self
-    }
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for Box<[T]> {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -647,7 +598,7 @@ unsafe impl<'a, T: Equivalence> Pointer for Box<[T]> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for Box<[T]> {}
+unsafe impl<'a, T: Equivalence> Buffer for Box<[T]> {}
 
 unsafe impl<'a, T: Equivalence> PointerMut for Box<[T]> {
     fn pointer_mut(&mut self) -> *mut c_void {
@@ -655,16 +606,9 @@ unsafe impl<'a, T: Equivalence> PointerMut for Box<[T]> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> WriteBuffer for Box<[T]> {}
+unsafe impl<'a, T: Equivalence> BufferMut for Box<[T]> {}
 
 // impls for Vec<T>
-unsafe impl<'a, T: Equivalence> Buffer for Vec<T> {
-    type Owner = Self;
-    fn take_ownership(self) -> Self::Owner {
-        self
-    }
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for Vec<T> {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -684,7 +628,7 @@ unsafe impl<'a, T: Equivalence> Pointer for Vec<T> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for Vec<T> {}
+unsafe impl<'a, T: Equivalence> Buffer for Vec<T> {}
 
 unsafe impl<'a, T: Equivalence> PointerMut for Vec<T> {
     fn pointer_mut(&mut self) -> *mut c_void {
@@ -692,16 +636,9 @@ unsafe impl<'a, T: Equivalence> PointerMut for Vec<T> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> WriteBuffer for Vec<T> {}
+unsafe impl<'a, T: Equivalence> BufferMut for Vec<T> {}
 
 // impls for Rc<T>
-unsafe impl<'a, T: Equivalence> Buffer for Rc<T> {
-    type Owner = Self;
-    fn take_ownership(self) -> Self::Owner {
-        self
-    }
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for Rc<T> {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -722,16 +659,9 @@ unsafe impl<'a, T: Equivalence> Pointer for Rc<T> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for Rc<T> {}
+unsafe impl<'a, T: Equivalence> Buffer for Rc<T> {}
 
 // impls for Rc<Vec<T>>
-unsafe impl<'a, T: Equivalence> Buffer for Rc<Vec<T>> {
-    type Owner = Self;
-    fn take_ownership(self) -> Self::Owner {
-        self
-    }
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for Rc<Vec<T>> {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -751,16 +681,9 @@ unsafe impl<'a, T: Equivalence> Pointer for Rc<Vec<T>> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for Rc<Vec<T>> {}
+unsafe impl<'a, T: Equivalence> Buffer for Rc<Vec<T>> {}
 
 // impls for Arc<T>
-unsafe impl<'a, T: Equivalence> Buffer for Arc<T> {
-    type Owner = Self;
-    fn take_ownership(self) -> Self::Owner {
-        self
-    }
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for Arc<T> {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -781,16 +704,9 @@ unsafe impl<'a, T: Equivalence> Pointer for Arc<T> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for Arc<T> {}
+unsafe impl<'a, T: Equivalence> Buffer for Arc<T> {}
 
 // impls for Arc<Vec<T>>
-unsafe impl<'a, T: Equivalence> Buffer for Arc<Vec<T>> {
-    type Owner = Self;
-    fn take_ownership(self) -> Self::Owner {
-        self
-    }
-}
-
 unsafe impl<'a, T: Equivalence> AsDatatype for Arc<Vec<T>> {
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
@@ -810,13 +726,13 @@ unsafe impl<'a, T: Equivalence> Pointer for Arc<Vec<T>> {
     }
 }
 
-unsafe impl<'a, T: Equivalence> ReadBuffer for Arc<Vec<T>> {}
+unsafe impl<'a, T: Equivalence> Buffer for Arc<Vec<T>> {}
 
 /// An immutable dynamically-typed buffer.
 ///
 /// The buffer has a definite length and MPI datatype, but it is not yet known which Rust type it
 /// corresponds to.  This is the MPI analogue of `&Any`.  It is semantically equivalent to the trait
-/// object reference `&ReadBuffer`.
+/// object reference `&Buffer`.
 #[derive(Copy, Clone, Debug)]
 pub struct DynBuffer<'a> {
     ptr: *const c_void,
@@ -847,14 +763,8 @@ unsafe impl<'a> AsDatatype for DynBuffer<'a> {
     }
 }
 
-unsafe impl<'a> Buffer for DynBuffer<'a> {
-    type Owner = Self;
-    fn take_ownership(self) -> Self::Owner {
-        self
-    }
-}
-
-unsafe impl<'a> ReadBuffer for DynBuffer<'a> {}
+// impls for DynBuffer<'a>
+unsafe impl<'a> Buffer for DynBuffer<'a> {}
 
 impl<'a> DynBuffer<'a> {
     /// Creates a buffer from a slice with whose type has an MPI equivalent.
@@ -912,7 +822,7 @@ impl<'a> DynBuffer<'a> {
 ///
 /// The buffer has a definite length and MPI datatype, but it is not yet known which Rust type it
 /// corresponds to.  This is the MPI analogue of `&mut Any`.  It is semantically equivalent to the
-/// mutable trait object reference `&mut WriteBuffer`.
+/// mutable trait object reference `&mut BufferMut`.
 #[derive(Debug)]
 pub struct DynBufferMut<'a> {
     ptr: *mut c_void,
@@ -920,6 +830,7 @@ pub struct DynBufferMut<'a> {
     datatype: DatatypeRef<'a>,
 }
 
+// impls for DynBufferMut<'a>
 unsafe impl<'a> Send for DynBufferMut<'a> {}
 
 unsafe impl<'a> Sync for DynBufferMut<'a> {}
@@ -942,16 +853,9 @@ unsafe impl<'a> PointerMut for DynBufferMut<'a> {
     }
 }
 
-unsafe impl<'a> Buffer for DynBufferMut<'a> {
-    type Owner = Self;
-    fn take_ownership(self) -> Self::Owner {
-        self
-    }
-}
+unsafe impl<'a> Buffer for DynBufferMut<'a> {}
 
-unsafe impl<'a> ReadBuffer for DynBufferMut<'a> {}
-
-unsafe impl<'a> WriteBuffer for DynBufferMut<'a> {}
+unsafe impl<'a> BufferMut for DynBufferMut<'a> {}
 
 unsafe impl<'a> AsDatatype for DynBufferMut<'a> {
     type Out = DatatypeRef<'a>;
@@ -1077,6 +981,7 @@ where
     }
 }
 
+// impls for &'a View<'d, D, B>
 unsafe impl<'a, 'd, D, B> AsDatatype for &'a View<'d, D, B>
 where
     D: 'd + Datatype,
@@ -1109,15 +1014,6 @@ where
 }
 
 unsafe impl<'a, 'd, D, B> Buffer for &'a View<'d, D, B>
-where
-    D: 'd + Datatype,
-    B: Pointer,
-{
-    type Owner = ();
-    fn take_ownership(self) -> Self::Owner {}
-}
-
-unsafe impl<'a, 'd, D, B> ReadBuffer for &'a View<'d, D, B>
 where
     D: 'd + Datatype,
     B: Pointer,
@@ -1163,6 +1059,7 @@ where
     }
 }
 
+// impls for &'a mut MutView<'d, D, B>
 unsafe impl<'a, 'd, D, B> AsDatatype for &'a mut MutView<'d, D, B>
 where
     D: 'd + Datatype,
@@ -1194,16 +1091,7 @@ where
     }
 }
 
-unsafe impl<'a, 'd, D, B> Buffer for &'a mut MutView<'d, D, B>
-where
-    D: 'd + Datatype,
-    B: PointerMut,
-{
-    type Owner = ();
-    fn take_ownership(self) -> Self::Owner {}
-}
-
-unsafe impl<'a, 'd, D, B> WriteBuffer for &'a mut MutView<'d, D, B>
+unsafe impl<'a, 'd, D, B> BufferMut for &'a mut MutView<'d, D, B>
 where
     D: 'd + Datatype,
     B: PointerMut,
@@ -1234,11 +1122,11 @@ pub trait PartitionedBuffer: Partitioned + Pointer + AsDatatype {}
 /// A mutable buffer that is `Partitioned`
 pub trait PartitionedBufferMut: Partitioned + PointerMut + AsDatatype {}
 
-/// Adds a partitioning to an existing `ReadBuffer` so that it becomes `Partitioned`
+/// Adds a partitioning to an existing `Buffer` so that it becomes `Partitioned`
 #[derive(Copy, Clone)]
 pub struct Partition<B, C, D>
 where
-    B: ReadBuffer,
+    B: Buffer,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1249,7 +1137,7 @@ where
 
 impl<B, C, D> Partition<B, C, D>
 where
-    B: ReadBuffer,
+    B: Buffer,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1274,7 +1162,7 @@ where
 
 unsafe impl<'a, B, C, D> AsDatatype for &'a Partition<B, C, D>
 where
-    B: ReadBuffer,
+    B: Buffer,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1286,7 +1174,7 @@ where
 
 unsafe impl<'a, B, C, D> Pointer for &'a Partition<B, C, D>
 where
-    B: ReadBuffer,
+    B: Buffer,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1297,7 +1185,7 @@ where
 
 impl<'a, B, C, D> Partitioned for &'a Partition<B, C, D>
 where
-    B: ReadBuffer,
+    B: Buffer,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1311,16 +1199,16 @@ where
 
 impl<'a, B, C, D> PartitionedBuffer for &'a Partition<B, C, D>
 where
-    B: ReadBuffer,
+    B: Buffer,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
 }
 
-/// Adds a partitioning to an existing `WriteBuffer` so that it becomes `Partitioned`
+/// Adds a partitioning to an existing `BufferMut` so that it becomes `Partitioned`
 pub struct PartitionMut<B, C, D>
 where
-    B: WriteBuffer,
+    B: BufferMut,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1331,7 +1219,7 @@ where
 
 impl<B, C, D> PartitionMut<B, C, D>
 where
-    B: WriteBuffer,
+    B: BufferMut,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1356,7 +1244,7 @@ where
 
 unsafe impl<'a, B, C, D> AsDatatype for &'a mut PartitionMut<B, C, D>
 where
-    B: WriteBuffer,
+    B: BufferMut,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1368,7 +1256,7 @@ where
 
 unsafe impl<'a, B, C, D> PointerMut for &'a mut PartitionMut<B, C, D>
 where
-    B: WriteBuffer,
+    B: BufferMut,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1379,7 +1267,7 @@ where
 
 impl<'a, B, C, D> Partitioned for &'a mut PartitionMut<B, C, D>
 where
-    B: WriteBuffer,
+    B: BufferMut,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
@@ -1393,7 +1281,7 @@ where
 
 impl<'a, B, C, D> PartitionedBufferMut for &'a mut PartitionMut<B, C, D>
 where
-    B: WriteBuffer,
+    B: BufferMut,
     C: Borrow<[Count]>,
     D: Borrow<[Count]>,
 {
