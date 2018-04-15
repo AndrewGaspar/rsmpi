@@ -29,15 +29,15 @@ fn main() {
             })
             .collect();
         let partition = Partition::new(&msg[..], counts, &displs[..]);
-        mpi::request::scope(|scope| {
+        mpi::request::scope(|_scope| {
             root_process
-                .immediate_scatter_varcount_into_root(scope, &partition, &mut buf[..])
+                .immediate_scatter_varcount_into_root(&partition, &mut buf[..])
                 .wait();
         });
     } else {
-        mpi::request::scope(|scope| {
+        mpi::request::scope(|_scope| {
             root_process
-                .immediate_scatter_varcount_into(scope, &mut buf[..])
+                .immediate_scatter_varcount_into(&mut buf[..])
                 .wait();
         });
     }

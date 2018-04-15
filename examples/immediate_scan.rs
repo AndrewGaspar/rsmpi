@@ -15,18 +15,18 @@ fn main() {
     let rank = world.rank();
 
     let mut x = 0;
-    mpi::request::scope(|scope| {
+    mpi::request::scope(|_scope| {
         world
-            .immediate_scan_into(scope, &rank, &mut x, SystemOperation::sum())
+            .immediate_scan_into(&rank, &mut x, SystemOperation::sum())
             .wait();
     });
     assert_eq!(x, (rank * (rank + 1)) / 2);
 
     let y = rank + 1;
     let mut z = 0;
-    mpi::request::scope(|scope| {
+    mpi::request::scope(|_scope| {
         world
-            .immediate_exclusive_scan_into(scope, &y, &mut z, SystemOperation::product())
+            .immediate_exclusive_scan_into(&y, &mut z, SystemOperation::product())
             .wait();
     });
     if rank > 0 {

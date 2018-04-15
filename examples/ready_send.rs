@@ -16,13 +16,13 @@ fn main() {
         world.process_at_rank(0).ready_send(&msg);
     } else {
         let mut v = vec![0u8; (size - 1) as usize];
-        mpi::request::scope(|scope| {
+        mpi::request::scope(|_scope| {
             let reqs = v.iter_mut()
                 .zip(1..)
                 .map(|(x, i)| {
                     world
                         .process_at_rank(i as Rank)
-                        .immediate_receive_into(scope, x)
+                        .immediate_receive_into(x)
                 })
                 .collect::<Vec<_>>();
             world.barrier();

@@ -21,11 +21,11 @@ fn main() {
 
     let x = vec![std::f32::consts::PI; 1024];
     let mut y = vec![0.0; 1024];
-    mpi::request::scope(|scope| {
+    mpi::request::scope(|_scope| {
         let _rreq = WaitGuard::from(
             world
                 .any_process()
-                .immediate_receive_into(scope, &mut y[..]),
+                .immediate_receive_into(&mut y[..]),
         );
         world.this_process().buffered_send(&x[..]);
     });

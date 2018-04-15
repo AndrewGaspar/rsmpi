@@ -22,7 +22,7 @@ use ffi::{MPI_Op, MPI_Request};
 use datatype::{DatatypeRef, DynBuffer, DynBufferMut};
 use datatype::traits::*;
 use raw::traits::*;
-use request::{RecvRequest, Request, Scope, SendRecvRequest, SendRequest, StaticScope};
+use request::{RecvRequest, Request, SendRecvRequest, SendRequest};
 use topology::traits::*;
 use topology::{Process, Rank};
 
@@ -304,11 +304,11 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.1
-    fn immediate_barrier(&self) -> Request<'static, StaticScope> {
+    fn immediate_barrier(&self) -> Request {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Ibarrier(self.as_raw(), &mut request);
-            Request::from_raw(request, StaticScope)
+            Request::from_raw(request, ())
         }
     }
 
@@ -322,16 +322,14 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.5
-    fn immediate_all_gather_into<'a, Sc, S, R>(
+    fn immediate_all_gather_into<S, R>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+    ) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: WriteBuffer,
-        Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -346,7 +344,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf))
         }
     }
 
@@ -360,16 +358,14 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.5
-    fn immediate_all_gather_varcount_into<'a, Sc, S, R>(
+    fn immediate_all_gather_varcount_into<S, R>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+    ) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: PartitionedBufferMut,
-        Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -384,7 +380,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf))
         }
     }
 
@@ -397,16 +393,14 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.6
-    fn immediate_all_to_all_into<'a, Sc, S, R>(
+    fn immediate_all_to_all_into<S, R>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+    ) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: WriteBuffer,
-        Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         let c_size = self.size();
@@ -421,7 +415,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf))
         }
     }
 
@@ -430,16 +424,14 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.6
-    fn immediate_all_to_all_varcount_into<'a, Sc, S, R>(
+    fn immediate_all_to_all_varcount_into<S, R>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+    ) -> SendRecvRequest<S, R>
     where
         S: PartitionedBuffer,
         R: PartitionedBufferMut,
-        Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -455,7 +447,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf))
         }
     }
 
@@ -469,18 +461,16 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.8
-    fn immediate_all_reduce_into<'a, Sc, S, R, O>(
+    fn immediate_all_reduce_into<S, R, Op>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-        op: O,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+        op: Op,
+    ) -> Request<(S, R, Op)>
     where
         S: ReadBuffer,
         R: WriteBuffer,
-        O: 'a + Operation,
-        Sc: Scope<'a>,
+        Op: Operation,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -493,7 +483,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf, op))
         }
     }
 
@@ -508,18 +498,16 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.9
-    fn immediate_reduce_scatter_block_into<'a, Sc, S, R, O>(
+    fn immediate_reduce_scatter_block_into<S, R, Op>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-        op: O,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+        op: Op,
+    ) -> Request<(S, R, Op)>
     where
         S: ReadBuffer,
         R: WriteBuffer,
-        O: 'a + Operation,
-        Sc: Scope<'a>,
+        Op: Operation,
     {
         assert_eq!(recvbuf.count() * self.size(), sendbuf.count());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -533,7 +521,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf, op))
         }
     }
 
@@ -547,18 +535,16 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.11
-    fn immediate_scan_into<'a, Sc, S, R, O>(
+    fn immediate_scan_into<S, R, Op>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-        op: O,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+        op: Op,
+    ) -> Request<(S, R, Op)>
     where
         S: ReadBuffer,
         R: WriteBuffer,
-        O: 'a + Operation,
-        Sc: Scope<'a>,
+        Op: Operation,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -571,7 +557,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf, op))
         }
     }
 
@@ -585,18 +571,16 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.12
-    fn immediate_exclusive_scan_into<'a, Sc, S, R, O>(
+    fn immediate_exclusive_scan_into<S, R, Op>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-        op: O,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+        op: Op,
+    ) -> Request<(S, R, Op)>
     where
         S: ReadBuffer,
         R: WriteBuffer,
-        O: 'a + Operation,
-        Sc: Scope<'a>,
+        Op: Operation,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -609,7 +593,7 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf, op))
         }
     }
 }
@@ -1021,14 +1005,12 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.2
-    fn immediate_broadcast_into<'a, Sc, R>(
+    fn immediate_broadcast_into<R>(
         &self,
-        scope: Sc,
         mut recvbuf: R,
-    ) -> RecvRequest<'a, R, Sc>
+    ) -> RecvRequest<R>
     where
         R: WriteBuffer,
-        Sc: Scope<'a>,
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -1040,7 +1022,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, (), recvbuf)
+            Request::from_raw(request, recvbuf)
         }
     }
 
@@ -1055,10 +1037,9 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
-    fn immediate_gather_into<'a, Sc, S>(&self, scope: Sc, sendbuf: S) -> SendRequest<'a, S, Sc>
+    fn immediate_gather_into<S>(&self, sendbuf: S) -> SendRequest<S>
     where
         S: ReadBuffer,
-        Sc: Scope<'a>,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1074,7 +1055,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, ())
+            Request::from_raw(request, sendbuf)
         }
     }
 
@@ -1089,16 +1070,14 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
-    fn immediate_gather_into_root<'a, Sc, S, R>(
+    fn immediate_gather_into_root<S, R>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+    ) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: WriteBuffer,
-        Sc: Scope<'a>,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1115,7 +1094,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf))
         }
     }
 
@@ -1130,14 +1109,12 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
-    fn immediate_gather_varcount_into<'a, Sc, S>(
+    fn immediate_gather_varcount_into<S>(
         &self,
-        scope: Sc,
         sendbuf: S,
-    ) -> SendRequest<'a, S, Sc>
+    ) -> SendRequest<S>
     where
         S: ReadBuffer,
-        Sc: Scope<'a>,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1154,7 +1131,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, ())
+            Request::from_raw(request, sendbuf)
         }
     }
 
@@ -1169,16 +1146,14 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
-    fn immediate_gather_varcount_into_root<'a, Sc, S, R>(
+    fn immediate_gather_varcount_into_root<S, R>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+    ) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: PartitionedBufferMut,
-        Sc: Scope<'a>,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1195,7 +1170,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf))
         }
     }
 
@@ -1210,10 +1185,9 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
-    fn immediate_scatter_into<'a, Sc, R>(&self, scope: Sc, mut recvbuf: R) -> RecvRequest<'a, R, Sc>
+    fn immediate_scatter_into<R>(&self, mut recvbuf: R) -> RecvRequest<R>
     where
         R: WriteBuffer,
-        Sc: Scope<'a>,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1229,7 +1203,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, (), recvbuf)
+            Request::from_raw(request, recvbuf)
         }
     }
 
@@ -1244,16 +1218,14 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
-    fn immediate_scatter_into_root<'a, Sc, S, R>(
+    fn immediate_scatter_into_root<S, R>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+    ) -> SendRecvRequest<S, R>
     where
         S: ReadBuffer,
         R: WriteBuffer,
-        Sc: Scope<'a>,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1270,7 +1242,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf))
         }
     }
 
@@ -1285,14 +1257,12 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
-    fn immediate_scatter_varcount_into<'a, Sc, R>(
+    fn immediate_scatter_varcount_into<R>(
         &self,
-        scope: Sc,
         mut recvbuf: R,
-    ) -> RecvRequest<'a, R, Sc>
+    ) -> RecvRequest<R>
     where
         R: WriteBuffer,
-        Sc: Scope<'a>,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1309,7 +1279,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, (), recvbuf)
+            Request::from_raw(request, recvbuf)
         }
     }
 
@@ -1324,16 +1294,14 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
-    fn immediate_scatter_varcount_into_root<'a, Sc, S, R>(
+    fn immediate_scatter_varcount_into_root<S, R>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-    ) -> RecvRequest<'a, R, Sc>
+    ) -> SendRecvRequest<S, R>
     where
         S: PartitionedBuffer,
         R: WriteBuffer,
-        Sc: Scope<'a>,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1350,7 +1318,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, (), recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf))
         }
     }
 
@@ -1366,16 +1334,14 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.7
-    fn immediate_reduce_into<'a, Sc, S, O>(
+    fn immediate_reduce_into<S, Op>(
         &self,
-        scope: Sc,
         sendbuf: S,
-        op: O,
-    ) -> SendRequest<'a, S, Sc>
+        op: Op,
+    ) -> Request<(S, Op)>
     where
         S: ReadBuffer,
-        O: 'a + Operation,
-        Sc: Scope<'a>,
+        Op: Operation,
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1390,7 +1356,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, ())
+            Request::from_raw(request, (sendbuf, op))
         }
     }
 
@@ -1406,18 +1372,16 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.7
-    fn immediate_reduce_into_root<'a, Sc, S, R, O>(
+    fn immediate_reduce_into_root<S, R, Op>(
         &self,
-        scope: Sc,
         sendbuf: S,
         mut recvbuf: R,
-        op: O,
-    ) -> SendRecvRequest<'a, S, R, Sc>
+        op: Op,
+    ) -> Request<(S, R, Op)>
     where
         S: ReadBuffer,
         R: WriteBuffer,
-        O: 'a + Operation,
-        Sc: Scope<'a>,
+        Op: Operation,
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1432,7 +1396,7 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
-            Request::from_raw_data(request, scope, sendbuf, recvbuf)
+            Request::from_raw(request, (sendbuf, recvbuf, op))
         }
     }
 }

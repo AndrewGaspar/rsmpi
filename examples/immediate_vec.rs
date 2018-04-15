@@ -3,7 +3,6 @@
 extern crate mpi;
 
 use mpi::traits::*;
-use mpi::request::StaticScope;
 
 fn main() {
     let universe = mpi::initialize().unwrap();
@@ -19,8 +18,8 @@ fn main() {
         let left_process = world.process_at_rank(rank - 1);
 
         Some((
-            left_process.immediate_send(StaticScope, &my_data[..]),
-            left_process.immediate_receive_into(StaticScope, vec![0; size as usize]),
+            left_process.immediate_send(&my_data[..]),
+            left_process.immediate_receive_into(vec![0; size as usize]),
         ))
     } else {
         None
@@ -30,36 +29,30 @@ fn main() {
         let right_process = world.process_at_rank(rank + 1);
 
         Some((
-            right_process.immediate_send(StaticScope, &my_data[..]),
-            right_process.immediate_receive_into(StaticScope, vec![0; size as usize]),
+            right_process.immediate_send(&my_data[..]),
+            right_process.immediate_receive_into(vec![0; size as usize]),
         ))
     } else {
         None
     };
 
     let left_send = left_requests.map(|(left_send, left_recv)| {
-        let (recv_data, _) = left_recv.wait_recv();
-
-        assert_eq!(vec![rank - 1; size as usize], recv_data);
+        assert_eq!(vec![rank - 1; size as usize], left_recv.wait_data_without_status());
 
         left_send
     });
 
     let right_send = right_requests.map(|(right_send, right_recv)| {
-        let (recv_data, _) = right_recv.wait_recv();
-
-        assert_eq!(vec![rank + 1; size as usize], recv_data);
+        assert_eq!(vec![rank + 1; size as usize], right_recv.wait_data_without_status());
 
         right_send
     });
 
     if let Some(sreq) = left_send {
-        let (send_data, _) = sreq.wait_send();
-        assert_eq!(&my_data[..], send_data);
+        assert_eq!(&my_data[..], sreq.wait_data_without_status());
     }
 
     if let Some(sreq) = right_send {
-        let (send_data, _) = sreq.wait_send();
-        assert_eq!(&my_data[..], send_data);
+        assert_eq!(&my_data[..], sreq.wait_data_without_status());
     }
 }

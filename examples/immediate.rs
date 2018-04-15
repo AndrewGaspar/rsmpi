@@ -12,9 +12,9 @@ fn main() {
     let x = std::f32::consts::PI;
     let mut y: f32 = 0.0;
 
-    mpi::request::scope(|scope| {
-        let mut sreq = world.this_process().immediate_send(scope, &x);
-        let rreq = world.any_process().immediate_receive_into(scope, &mut y);
+    mpi::request::scope(|_scope| {
+        let mut sreq = world.this_process().immediate_send(&x);
+        let rreq = world.any_process().immediate_receive_into(&mut y);
         rreq.wait();
         loop {
             match sreq.test() {
@@ -30,9 +30,9 @@ fn main() {
     assert_eq!(x, y);
 
     y = 0.0;
-    mpi::request::scope(|scope| {
-        let _rreq = WaitGuard::from(world.any_process().immediate_receive_into(scope, &mut y));
-        let _sreq = WaitGuard::from(world.this_process().immediate_ready_send(scope, &x));
+    mpi::request::scope(|_scope| {
+        let _rreq = WaitGuard::from(world.any_process().immediate_receive_into(&mut y));
+        let _sreq = WaitGuard::from(world.this_process().immediate_ready_send(&x));
     });
     assert_eq!(x, y);
 
@@ -40,15 +40,15 @@ fn main() {
     assert!(world.any_process().immediate_matched_probe().is_none());
 
     y = 0.0;
-    mpi::request::scope(|scope| {
-        let _sreq: WaitGuard<_, _, _> = world
+    mpi::request::scope(|_scope| {
+        let _sreq: WaitGuard<_> = world
             .this_process()
-            .immediate_synchronous_send(scope, &x)
+            .immediate_synchronous_send(&x)
             .into();
         let preq = world.any_process().immediate_matched_probe();
         assert!(preq.is_some());
         let (msg, _) = preq.unwrap();
-        let _rreq: WaitGuard<_, _, _> = msg.immediate_matched_receive_into(scope, &mut y).into();
+        let _rreq: WaitGuard<_> = msg.immediate_matched_receive_into(&mut y).into();
     });
     assert_eq!(x, y);
 
@@ -74,11 +74,11 @@ fn main() {
         }
     }
 
-    mpi::request::scope(|scope| {
-        let sreq = world.this_process().immediate_send(scope, &x);
+    mpi::request::scope(|_scope| {
+        let sreq = world.this_process().immediate_send(&x);
         sreq.cancel();
         sreq.wait();
 
-        let _sreq = CancelGuard::from(world.this_process().immediate_receive_into(scope, &mut y));
+        let _sreq = CancelGuard::from(world.this_process().immediate_receive_into(&mut y));
     });
 }

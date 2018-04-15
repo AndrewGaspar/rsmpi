@@ -47,10 +47,7 @@ pub mod traits {
     pub use super::{AsyncRequest, CollectRequests};
 }
 
-/// A request object for a non-blocking operation registered with a `Scope` of lifetime `'a`
-///
-/// The `Scope` is needed to ensure that all buffers associated request will outlive the request
-/// itself, even if the destructor of the request fails to run.
+/// A request object for a non-blocking operation.
 ///
 /// # Panics
 ///
@@ -64,11 +61,11 @@ pub mod traits {
 /// # Standard section(s)
 ///
 /// 3.7.1
-pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
+pub trait AsyncRequest<Owned>: AsRaw<Raw = MPI_Request> + Sized {
     /// Unregister the request object from its scope and deconstruct it into its raw parts.
     ///
     /// This is unsafe because the request may outlive its associated buffers.
-    unsafe fn into_raw(self) -> (MPI_Request, Sc);
+    unsafe fn into_raw(self) -> (MPI_Request, Owned);
 
     /// Wait for an operation to finish.
     ///
@@ -87,6 +84,21 @@ pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
         Status::from_raw(status)
     }
 
+    /// Waits for completion of the request and relinquishes ownership of its send and receive
+    /// buffers.
+    ///
+    /// # Standard section(s)
+    ///
+    /// 3.7.3
+    fn wait_data(self) -> (Owned, Status) {
+        let (mut request, data) = unsafe { self.into_raw() };
+
+        let mut status: MPI_Status = unsafe { uninitialized() };
+        raw::wait(&mut request, Some(&mut status));
+
+        (data, Status::from_raw(status))
+    }
+
     /// Wait for an operation to finish, but don’t bother retrieving the `Status` information.
     ///
     /// Will block execution of the calling thread until the associated operation has finished.
@@ -96,6 +108,19 @@ pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
     /// 3.7.3
     fn wait_without_status(self) {
         raw::wait(unsafe { &mut self.into_raw().0 }, None)
+    }
+
+    /// Wait for an operation to finish, but don’t bother retrieving the `Status` information.
+    ///
+    /// Will block execution of the calling thread until the associated operation has finished.
+    ///
+    /// # Standard section(s)
+    ///
+    /// 3.7.3
+    fn wait_data_without_status(self) -> Owned {
+        let (mut request, data) = unsafe { self.into_raw() };
+        raw::wait(&mut request, None);
+        data
     }
 
     /// Test whether an operation has finished.
@@ -115,6 +140,28 @@ pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
             Some(status) => {
                 unsafe { self.into_raw() };
                 Ok(Status::from_raw(status))
+            }
+            None => Err(self),
+        }
+    }
+
+    /// Test whether an operation has finished.
+    ///
+    /// If the operation has finished, `Status` and the owned data is returned.  Otherwise returns
+    /// the unfinished `Request`.
+    ///
+    /// # Examples
+    ///
+    /// See `examples/immediate.rs`
+    ///
+    /// # Standard section(s)
+    ///
+    /// 3.7.3
+    fn test_data(self) -> Result<(Owned, Status), Self> {
+        match raw::test(&mut self.as_raw()) {
+            Some(status) => {
+                let (_, data) = unsafe { self.into_raw() };
+                Ok((data, Status::from_raw(status)))
             }
             None => Err(self),
         }
@@ -141,24 +188,9 @@ pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
             ffi::MPI_Cancel(&mut request);
         }
     }
-
-    /// Reduce the scope of a request.
-    fn shrink_scope_to<'b, Sc2>(self, scope: Sc2) -> Request<'b, Sc2>
-    where
-        'a: 'b,
-        Sc2: Scope<'b>,
-    {
-        unsafe {
-            let (request, _) = self.into_raw();
-            Request::from_raw(request, scope)
-        }
-    }
 }
 
-/// A request object for a non-blocking operation registered with a `Scope` of lifetime `'a`
-///
-/// The `Scope` is needed to ensure that all buffers associated request will outlive the request
-/// itself, even if the destructor of the request fails to run.
+/// A request object for a non-blocking operation.
 ///
 /// # Panics
 ///
@@ -174,76 +206,50 @@ pub trait AsyncRequest<'a, Sc: Scope<'a>>: AsRaw<Raw = MPI_Request> + Sized {
 /// 3.7.1
 #[must_use]
 #[derive(Debug)]
-pub struct Request<'a, Sc: Scope<'a>, S = (), R = ()> {
+pub struct Request<Owned = ()> {
     request: MPI_Request,
-    scope: Sc,
-    send_data: S,
-    recv_data: R,
-    phantom: PhantomData<Cell<&'a ()>>,
+    data: Owned,
 }
 
 /// A `SendRequest` is a request that is sending data. It maintains either a const borrow or
 /// ownership of the buffer being sent.
-pub type SendRequest<'a, S, Sc = StaticScope> = Request<'a, Sc, S, ()>;
+pub type SendRequest<S> = Request<S>;
 
 /// A `RecvRequest` is a request that is receiving data. It maintains either a mutable borrow or
 /// ownership of the buffer receiving the data.
-pub type RecvRequest<'a, R, Sc = StaticScope> = Request<'a, Sc, (), R>;
+pub type RecvRequest<R> = Request<R>;
 
 /// A `SendRecvRequest` is a request that is sending and receiving data. It maintains a const
 /// borrow or ownership of the buffer being sent, and a mutable borrow or ownership of the buffer
 /// receiving the data.
-pub type SendRecvRequest<'a, S, R, Sc = StaticScope> = Request<'a, Sc, S, R>;
+pub type SendRecvRequest<S, R> = Request<(S, R)>;
 
-unsafe impl<'a, Sc: Scope<'a>, S, R> AsRaw for Request<'a, Sc, S, R> {
+unsafe impl<Owned> AsRaw for Request<Owned> {
     type Raw = MPI_Request;
     fn as_raw(&self) -> Self::Raw {
         self.request
     }
 }
 
-impl<'a, Sc: Scope<'a>, S, R> Drop for Request<'a, Sc, S, R> {
+impl<Owned> Drop for Request<Owned> {
     fn drop(&mut self) {
         panic!("request was dropped without being completed");
     }
 }
 
-impl<'a, Sc: Scope<'a>> Request<'a, Sc> {
-    /// Construct a request object from the raw MPI type.
-    ///
-    /// # Requirements
-    ///
-    /// - The request is a valid, active request.  It must not be `MPI_REQUEST_NULL`.
-    /// - The request must not be persistent.
-    /// - All buffers associated with the request must outlive `'a`.
-    /// - The request must not be registered with the given scope.
-    ///
-    pub unsafe fn from_raw(request: MPI_Request, scope: Sc) -> Self {
-        debug_assert!(!request.is_handle_null());
-        scope.register();
-        Self {
-            request: request,
-            scope: scope,
-            send_data: (),
-            recv_data: (),
-            phantom: Default::default(),
-        }
-    }
-}
-
-impl<'a, Sc: Scope<'a>, S, R> Request<'a, Sc, S, R> {
+impl<Owned> Request<Owned> {
     /// Stops tracking the request's data buffers. The lifetime of the buffers must exceed the
     /// lifetime of the attached scope.
-    pub fn forget_data(self) -> Request<'a, Sc>
-    where
-        S: 'a,
-        R: 'a,
-    {
-        unsafe {
-            let (request, scope, _, _) = self.into_raw_data();
-            Request::from_raw(request, scope)
-        }
-    }
+    // pub fn forget_data(self) -> Request
+    // where
+    //     S: 'a,
+    //     R: 'a,
+    // {
+    //     unsafe {
+    //         let (request, scope, _, _) = self.into_raw_data();
+    //         Request::from_raw(request, scope)
+    //     }
+    // }
 
     /// Construct a request object from the raw MPI type and its associated data buffer.
     ///
@@ -255,119 +261,69 @@ impl<'a, Sc: Scope<'a>, S, R> Request<'a, Sc, S, R> {
     /// - The request must not be registered with the given scope.
     /// - If `data` is a reference, the referenced must live at least as long as the MPI Request.
     ///
-    pub unsafe fn from_raw_data(
+    pub unsafe fn from_raw(
         request: MPI_Request,
-        scope: Sc,
-        send_data: S,
-        recv_data: R,
+        data: Owned,
     ) -> Self {
         debug_assert!(!request.is_handle_null());
-        scope.register();
         Self {
             request,
-            scope,
-            send_data,
-            recv_data,
-            phantom: Default::default(),
+            data,
         }
-    }
-
-    /// Unregister the request object from its scope and deconstruct it into its raw parts.
-    ///
-    /// This is unsafe because the request may outlive its associated buffers.
-    pub unsafe fn into_raw_data(mut self) -> (MPI_Request, Sc, S, R) {
-        let request = replace(&mut self.request, uninitialized());
-        let scope = replace(&mut self.scope, uninitialized());
-        let send_data = replace(&mut self.send_data, uninitialized());
-        let recv_data = replace(&mut self.recv_data, uninitialized());
-        drop(replace(&mut self.phantom, uninitialized()));
-        forget(self);
-        scope.unregister();
-        (request, scope, send_data, recv_data)
-    }
-
-    /// Waits for completion of the request and relinquishes ownership of its send and receive
-    /// buffers.
-    pub fn wait_data(self) -> (S, R, Status) {
-        let (mut request, _, send_data, recv_data) = unsafe { self.into_raw_data() };
-
-        let mut status: MPI_Status = unsafe { uninitialized() };
-        raw::wait(&mut request, Some(&mut status));
-
-        (send_data, recv_data, Status::from_raw(status))
-    }
-
-    /// Waits for completion of the request and relinquishes ownership of its receive buffer.
-    pub fn wait_send(self) -> (S, Status) {
-        let (send_data, _, status) = self.wait_data();
-
-        (send_data, status)
-    }
-
-    /// Waits for completion of the request and relinquishes ownership of its receive buffer.
-    pub fn wait_recv(self) -> (R, Status) {
-        let (_, recv_data, status) = self.wait_data();
-
-        (recv_data, status)
     }
 }
 
-impl<'a, Sc: Scope<'a>, S, R> AsyncRequest<'a, Sc> for Request<'a, Sc, S, R> {
-    unsafe fn into_raw(mut self) -> (MPI_Request, Sc) {
+impl<Owned> AsyncRequest<Owned> for Request<Owned> {
+    /// Unregister the request object from its scope and deconstruct it into its raw parts.
+    ///
+    /// This is unsafe because the request may outlive its associated buffers.
+    unsafe fn into_raw(mut self) -> (MPI_Request, Owned) {
         let request = replace(&mut self.request, uninitialized());
-        let scope = replace(&mut self.scope, uninitialized());
-        drop(replace(&mut self.send_data, uninitialized()));
-        drop(replace(&mut self.recv_data, uninitialized()));
-        drop(replace(&mut self.phantom, uninitialized()));
+        let data = replace(&mut self.data, uninitialized());
         forget(self);
-        scope.unregister();
-        (request, scope)
+        (request, data)
     }
 }
 
 /// Collects an iterator of `Request` objects into a `RequestCollection` object
-pub trait CollectRequests<'a, Sc: Scope<'a>, S, R>
-    : IntoIterator<Item = Request<'a, Sc, S, R>> {
+pub trait CollectRequests<Owned>
+    : IntoIterator<Item = Request<Owned>> {
     /// Consumes and converts an iterator of `Requst` objects into a `RequestCollection` object.
-    fn collect_requests<'b, Sc2: Scope<'b>>(self, scope: Sc2) -> RequestCollection<'b, Sc2, S, R>
-    where
-        'a: 'b;
+    fn collect_requests(self) -> RequestCollection<Owned>;
 }
 
-impl<'a, Sc: Scope<'a>, S, R, T> CollectRequests<'a, Sc, S, R> for T
+impl<Owned, T> CollectRequests<Owned> for T
 where
-    T: IntoIterator<Item = Request<'a, Sc, S, R>>,
+    T: IntoIterator<Item = Request<Owned>>,
 {
-    fn collect_requests<'b, Sc2: Scope<'b>>(self, scope: Sc2) -> RequestCollection<'b, Sc2, S, R>
-    where
-        'a: 'b,
+    fn collect_requests(self) -> RequestCollection<Owned>
     {
-        RequestCollection::from_request_iter(self, scope)
+        RequestCollection::from_request_iter(self)
     }
 }
 
 /// Result type for `RequestCollection::test_any`.
 #[derive(Clone, Copy)]
-pub enum TestAny<S, R> {
+pub enum TestAny<Owned> {
     /// Indicates that there are no active requests in the `requests` slice.
     NoneActive,
     /// Indicates that, while there are active requests in the `requests` slice, none of them were
     /// completed.
     NoneComplete,
     /// Indicates which request in the `requests` slice was completed.
-    Completed(i32, S, R, Status),
+    Completed(i32, Owned, Status),
 }
 
 /// Result type for `RequestCollection::test_any_without_status`.
 #[derive(Clone, Copy)]
-pub enum TestAnyWithoutStatus<S, R> {
+pub enum TestAnyWithoutStatus<Owned> {
     /// Indicates that there are no active requests in the `requests` slice.
     NoneActive,
     /// Indicates that, while there are active requests in the `requests` slice, none of them were
     /// completed.
     NoneComplete,
     /// Indicates which request in the `requests` slice was completed.
-    Completed(i32, S, R),
+    Completed(i32, Owned),
 }
 
 /// A collection of request objects for a non-blocking operation registered with a `Scope` of
@@ -391,7 +347,7 @@ pub enum TestAnyWithoutStatus<S, R> {
 /// 3.7.5
 #[must_use]
 #[derive(Debug)]
-pub struct RequestCollection<'a, Sc: Scope<'a> = StaticScope, S = (), R = ()> {
+pub struct RequestCollection<Owned> {
     /// Tracks the number of request handles in `requests` are active.
     outstanding: usize,
 
@@ -399,33 +355,18 @@ pub struct RequestCollection<'a, Sc: Scope<'a> = StaticScope, S = (), R = ()> {
     /// could become essentially `Vec<Option<MPI_Request>>`.
     requests: Vec<MPI_Request>,
 
-    /// `send_data[i]` contains the send buffer associated with `requests[i]`
+    /// `data[i]` contains the owned objects and buffers associated with `requests[i]`
     ///
-    /// `send_data` is not used like a typical Vec - so as to not impose `Default` requirements
+    /// `data` is not used like a typical Vec - so as to not impose `Default` requirements
     /// on `S` and not have to wrap `S` in `Option`, we manage the uninitialized memory in
     /// accordance with the active state of the associated request. This also allows no memory to be
-    /// allocated for `send_data` when `S = ()`.
+    /// allocated for `data` when `Owned = ()`.
     ///
-    /// Therefore, `send_data.len()` will always be `0`.
-    send_data: Vec<S>,
-
-    /// `recv_data[i]` contains the send buffer associated with `requests[i]`
-    ///
-    /// `recv_data` is not used like a typical Vec - so as to not impose `Default` requirements
-    /// on `R` and not have to wrap `R` in `Option`, we manage the uninitialized memory in
-    /// accordance with the active state of the associated request. This also allows no memory to be
-    /// allocated for `recv_data` when `R = ()`.
-    ///
-    /// Therefore, `recv_data.len()` will always be `0`.
-    recv_data: Vec<R>,
-
-    // The scope attached to the RequestCollection. All requests in the collection must be
-    // deallocated when this scope exits.
-    scope: Sc,
-    phantom: PhantomData<Cell<&'a ()>>,
+    /// Therefore, `data.len()` will always be `0`.
+    data: Vec<Owned>,
 }
 
-impl<'a, Sc: Scope<'a>, S, R> Drop for RequestCollection<'a, Sc, S, R> {
+impl<Owned> Drop for RequestCollection<Owned> {
     fn drop(&mut self) {
         if self.outstanding != 0 {
             panic!("RequestCollection was dropped with outstanding requests not completed.");
@@ -433,24 +374,17 @@ impl<'a, Sc: Scope<'a>, S, R> Drop for RequestCollection<'a, Sc, S, R> {
     }
 }
 
-impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
+impl<Owned> RequestCollection<Owned> {
     /// Constructs a `RequestCollection` from a Vec of `MPI_Request` handles and a scope object.
     /// `requests` are allowed to be null, but they must not be persistent requests.
     pub fn from_raw(
         requests: Vec<MPI_Request>,
-        mut send_data: Vec<S>,
-        mut recv_data: Vec<R>,
-        scope: Sc,
+        mut data: Vec<Owned>,
     ) -> Self {
         assert_eq!(
             requests.len(),
-            send_data.len(),
-            "The send_data and requests arrays must be the same size."
-        );
-        assert_eq!(
-            requests.len(),
-            recv_data.len(),
-            "The recv_data and requests arrays must be the same size."
+            data.len(),
+            "The data and requests arrays must be the same size."
         );
 
         let outstanding = requests
@@ -458,60 +392,50 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
             .filter(|&request| !request.is_handle_null())
             .count();
 
-        scope.register_many(outstanding);
-
         // The data is treated as uninitialized data. It has to be manually dropped.
         unsafe {
-            send_data.set_len(0);
-            recv_data.set_len(0);
+            data.set_len(0);
 
-            // explicitly drop the send_data and recv_data for the null request handles
+            // explicitly drop the data for the null request handles
             for i in 0..requests.len() {
                 if requests[i].is_handle_null() {
-                    drop_in_place(&mut send_data[i]);
-                    drop_in_place(&mut recv_data[i]);
+                    drop_in_place(data.get_unchecked_mut(i));
                 }
             }
         }
 
         Self {
-            outstanding: outstanding,
-            requests: requests,
-            send_data: send_data,
-            recv_data: recv_data,
-            scope: scope,
-            phantom: Default::default(),
+            outstanding,
+            requests,
+            data,
         }
     }
 
     /// Constructs a new, empty `RequestCollection` object.
-    pub fn new(scope: Sc) -> Self {
-        Self::with_capacity(scope, 0)
+    pub fn new() -> Self {
+        Self::with_capacity(0)
     }
 
     /// Constructs a new, empty `RequestCollection` with reserved space for `capacity` requests.
-    pub fn with_capacity(scope: Sc, capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
             outstanding: 0,
             requests: Vec::with_capacity(capacity),
-            send_data: Vec::with_capacity(capacity),
-            recv_data: Vec::with_capacity(capacity),
-            scope: scope,
-            phantom: Default::default(),
+            data: Vec::with_capacity(capacity),
         }
     }
 
     /// Converts an iterator of request objects to a `RequestCollection`. The scope of each request
     /// must be larger than or equal of the new `RequestCollection`.
-    fn from_request_iter<'b: 'a, T, Sc2: Scope<'b>>(iter: T, scope: Sc) -> Self
+    fn from_request_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = Request<'b, Sc2, S, R>>,
+        T: IntoIterator<Item = Request<Owned>>,
     {
         let iter = iter.into_iter();
 
         let (lbound, _) = iter.size_hint();
 
-        let mut collection = RequestCollection::with_capacity(scope, lbound);
+        let mut collection = RequestCollection::with_capacity(lbound);
 
         for request in iter {
             collection.push(request);
@@ -523,9 +447,9 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
     /// Pushes a new request into the collection. The request is removed from its previous scope and
     /// attached to the new scope. Therefore, the request's scope must be greater than or equal to
     /// the collection's scope.
-    pub fn push<'b: 'a, Sc2: Scope<'b>>(&mut self, request: Request<'b, Sc2, S, R>) {
+    pub fn push(&mut self, request: Request<Owned>) {
         unsafe {
-            let (request, _, send_data, recv_data) = request.into_raw_data();
+            let (request, data) = request.into_raw();
             assert!(
                 !request.is_handle_null(),
                 "Cannot add NULL requests to a RequestCollection."
@@ -537,31 +461,17 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
 
             self.requests.push(request);
 
-            if self.requests.capacity() > self.send_data.capacity() {
-                let grow_by = self.requests.capacity() - self.send_data.capacity();
+            if self.requests.capacity() > self.data.capacity() {
+                let grow_by = self.requests.capacity() - self.data.capacity();
 
-                self.send_data.reserve(grow_by);
-                self.recv_data.reserve(grow_by);
+                self.data.reserve(grow_by);
             }
 
-            forget(replace(self.send_data.get_unchecked_mut(idx), send_data));
-            forget(replace(self.recv_data.get_unchecked_mut(idx), recv_data));
+            forget(replace(self.data.get_unchecked_mut(idx), data));
 
             self.check_invariants();
 
             self.increase_outstanding(1);
-        }
-    }
-
-    /// Reduce the scope of a request.
-    pub fn shrink_scope_to<'b, Sc2>(self, scope: Sc2) -> RequestCollection<'b, Sc2, S, R>
-    where
-        'a: 'b,
-        Sc2: Scope<'b>,
-    {
-        unsafe {
-            let (requests, send_data, recv_data, _) = self.into_raw();
-            RequestCollection::from_raw(requests, send_data, recv_data, scope)
         }
     }
 
@@ -575,40 +485,26 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
 
     fn check_invariants(&self) {
         debug_assert!(
-            self.send_data.is_empty(),
-            "Internal rsmpi error: The send_data array is improperly initialized."
-        );
-        debug_assert!(
-            self.recv_data.is_empty(),
-            "Internal rsmpi error: The recv_data array is improperly initialized."
+            self.data.is_empty(),
+            "Internal rsmpi error: The data array is improperly initialized."
         );
 
-        // While `send_data` and `recv_data` are generally held to the same capacity as
-        // `requests`, zero-sized types (e.g. ()) may result in capacities that are in excess of
-        // the requested capacity.
+        // While `data` is generally held to the same capacity as `requests`, zero-sized types
+        // (e.g. ()) may result in capacities that are in excess of the requested capacity.
         //
-        // Therefore just verify that the capacity of `send_data` and `recv_data` are at /least/ as
-        // large as `requests`.
+        // Therefore just verify that the capacity of `data` is at /least/ as large as `requests`.
         debug_assert!(
-            self.send_data.capacity() >= self.requests.len(),
-            "Internal rsmpi error: The send_data array wasn't grown correctly."
-        );
-        debug_assert!(
-            self.recv_data.capacity() >= self.requests.len(),
-            "Internal rsmpi error: The recv_data array wasn't grown correctly."
+            self.data.capacity() >= self.requests.len(),
+            "Internal rsmpi error: The data array wasn't grown correctly."
         );
     }
 
     fn increase_outstanding(&mut self, new_outstanding: usize) {
-        self.scope.register_many(new_outstanding);
-
         self.outstanding += new_outstanding;
         self.check_outstanding();
     }
 
     fn decrease_outstanding(&mut self, completed: usize) {
-        unsafe { self.scope.unregister_many(completed) };
-
         self.outstanding -= completed;
         self.check_outstanding();
     }
@@ -628,22 +524,15 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
         );
     }
 
-    /// Called after a request is completed to retrieve the `send_data` and `recv_data` associated
-    /// with the completed request.
-    unsafe fn complete_request(&mut self, idx: i32) -> (S, R) {
+    /// Called after a request is completed to retrieve the `data` associated with the completed
+    /// request.
+    unsafe fn complete_request(&mut self, idx: i32) -> Owned {
         self.check_null(idx);
 
-        (
-            replace(
-                self.send_data
-                    .get_unchecked_mut(idx.value_as::<usize>().unwrap()),
-                uninitialized(),
-            ),
-            replace(
-                self.recv_data
-                    .get_unchecked_mut(idx.value_as::<usize>().unwrap()),
-                uninitialized(),
-            ),
+        replace(
+            self.data
+                .get_unchecked_mut(idx.value_as::<usize>().unwrap()),
+            uninitialized(),
         )
     }
 
@@ -664,30 +553,19 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
     unsafe fn complete_some_requests(
         &mut self,
         indices: &[i32],
-        mut send_data: Option<&mut Vec<S>>,
-        mut recv_data: Option<&mut Vec<R>>,
+        mut data: Option<&mut Vec<Owned>>,
     ) {
         self.check_some_null(indices);
 
         for &idx in indices {
-            let idx_send_data = replace(
-                self.send_data
+            let idx_data = replace(
+                self.data
                     .get_unchecked_mut(idx.value_as::<usize>().unwrap()),
                 uninitialized(),
             );
 
-            let idx_recv_data = replace(
-                self.recv_data
-                    .get_unchecked_mut(idx.value_as::<usize>().unwrap()),
-                uninitialized(),
-            );
-
-            if let Some(ref mut send_data) = send_data {
-                send_data.push(idx_send_data);
-            }
-
-            if let Some(ref mut recv_data) = recv_data {
-                recv_data.push(idx_recv_data);
+            if let Some(ref mut data) = data {
+                data.push(idx_data);
             }
         }
     }
@@ -707,25 +585,20 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
     unsafe fn complete_all_requests(
         &mut self,
         indices: Option<Vec<i32>>,
-        mut send_data: Option<&mut Vec<S>>,
-        mut recv_data: Option<&mut Vec<R>>,
+        mut data: Option<&mut Vec<Owned>>,
     ) {
         if let Some(ref indices) = indices {
-            self.complete_some_requests(&indices[..], send_data, recv_data);
+            self.complete_some_requests(&indices[..], data);
             return;
         }
 
         self.check_all_null();
 
         for i in 0..self.requests.len().value_as().unwrap() {
-            let (i_send_data, i_recv_data) = self.complete_request(i);
+            let i_data = self.complete_request(i);
 
-            if let Some(ref mut send_data) = send_data {
-                send_data.push(i_send_data);
-            }
-
-            if let Some(ref mut recv_data) = recv_data {
-                recv_data.push(i_recv_data);
+            if let Some(ref mut data) = data {
+                data.push(i_data);
             }
         }
     }
@@ -742,15 +615,11 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
 
     /// Returns the underlying array of MPI_Request objects and their attached
     /// scope.
-    pub unsafe fn into_raw(mut self) -> (Vec<MPI_Request>, Vec<S>, Vec<R>, Sc) {
+    pub unsafe fn into_raw(mut self) -> (Vec<MPI_Request>, Vec<Owned>) {
         let requests = replace(&mut self.requests, uninitialized());
-        let send_data = replace(&mut self.send_data, uninitialized());
-        let recv_data = replace(&mut self.recv_data, uninitialized());
-        let scope = replace(&mut self.scope, uninitialized());
-        let _ = replace(&mut self.phantom, uninitialized());
+        let data = replace(&mut self.data, uninitialized());
         forget(self);
-        scope.unregister();
-        (requests, send_data, recv_data, scope)
+        (requests, data)
     }
 
     /// `shrink` removes all deallocated requests from the collection. It does not shrink the size
@@ -774,12 +643,12 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
     /// # Standard section(s)
     ///
     /// 3.7.5
-    pub fn wait_any(&mut self) -> Option<(i32, S, R, Status)> {
+    pub fn wait_any(&mut self) -> Option<(i32, Owned, Status)> {
         let mut status: MPI_Status = unsafe { uninitialized() };
         if let Some(idx) = raw::wait_any(&mut self.requests, Some(&mut status)) {
-            let (send_data, recv_data) = unsafe { self.complete_request(idx) };
+            let data = unsafe { self.complete_request(idx) };
             self.decrease_outstanding(1);
-            Some((idx, send_data, recv_data, Status::from_raw(status)))
+            Some((idx, data, Status::from_raw(status)))
         } else {
             self.check_outstanding();
             None
@@ -799,11 +668,11 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
     /// # Standard section(s)
     ///
     /// 3.7.5
-    pub fn wait_any_without_status(&mut self) -> Option<(i32, S, R)> {
+    pub fn wait_any_without_status(&mut self) -> Option<(i32, Owned)> {
         if let Some(idx) = raw::wait_any(&mut self.requests, None) {
-            let (send_data, recv_data) = unsafe { self.complete_request(idx) };
+            let data = unsafe { self.complete_request(idx) };
             self.decrease_outstanding(1);
-            Some((idx, send_data, recv_data))
+            Some((idx, data))
         } else {
             self.check_outstanding();
             None
@@ -825,15 +694,15 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
     /// # Standard section(s)
     ///
     /// 3.7.5
-    pub fn test_any(&mut self) -> TestAny<S, R> {
+    pub fn test_any(&mut self) -> TestAny<Owned> {
         let mut status: MPI_Status = unsafe { uninitialized() };
         let result = match raw::test_any(&mut self.requests, Some(&mut status)) {
             raw::TestAny::NoneActive => TestAny::NoneActive,
             raw::TestAny::NoneComplete => TestAny::NoneComplete,
             raw::TestAny::Completed(idx) => {
-                let (send_data, recv_data) = unsafe { self.complete_request(idx) };
+                let data = unsafe { self.complete_request(idx) };
                 self.decrease_outstanding(1);
-                TestAny::Completed(idx, send_data, recv_data, Status::from_raw(status))
+                TestAny::Completed(idx, data, Status::from_raw(status))
             }
         };
         self.check_outstanding();
@@ -856,14 +725,14 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
     /// # Standard section(s)
     ///
     /// 3.7.5
-    pub fn test_any_without_status(&mut self) -> TestAnyWithoutStatus<S, R> {
+    pub fn test_any_without_status(&mut self) -> TestAnyWithoutStatus<Owned> {
         let result = match raw::test_any(&mut self.requests, None) {
             raw::TestAny::NoneActive => TestAnyWithoutStatus::NoneActive,
             raw::TestAny::NoneComplete => TestAnyWithoutStatus::NoneComplete,
             raw::TestAny::Completed(idx) => {
-                let (send_data, recv_data) = unsafe { self.complete_request(idx) };
+                let data = unsafe { self.complete_request(idx) };
                 self.decrease_outstanding(1);
-                TestAnyWithoutStatus::Completed(idx, send_data, recv_data)
+                TestAnyWithoutStatus::Completed(idx, data)
             }
         };
         self.check_outstanding();
@@ -908,7 +777,7 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
 
         raw::wait_all(&mut self.requests, Some(raw_statuses));
 
-        unsafe { self.complete_all_requests(active_requests, None, None) };
+        unsafe { self.complete_all_requests(active_requests, None) };
         self.clear_outstanding();
     }
 
@@ -946,7 +815,7 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
 
         raw::wait_all(&mut self.requests[..], None);
 
-        unsafe { self.complete_all_requests(active_requests, None, None) };
+        unsafe { self.complete_all_requests(active_requests, None) };
         self.clear_outstanding();
     }
 
@@ -971,7 +840,7 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
         let active_requests = self.get_active_requests();
 
         if raw::test_all(&mut self.requests, Some(raw_statuses)) {
-            unsafe { self.complete_all_requests(active_requests, None, None) };
+            unsafe { self.complete_all_requests(active_requests, None) };
             self.clear_outstanding();
             true
         } else {
@@ -1016,7 +885,7 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
         let active_requests = self.get_active_requests();
 
         if raw::test_all(&mut self.requests, None) {
-            unsafe { self.complete_all_requests(active_requests, None, None) };
+            unsafe { self.complete_all_requests(active_requests, None) };
             self.clear_outstanding();
 
             true
@@ -1048,7 +917,7 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
         match raw::wait_some(&mut self.requests, indices, Some(raw_statuses)) {
             Some(count) => {
                 unsafe {
-                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None, None);
+                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None);
                 }
                 self.decrease_outstanding(count as usize);
 
@@ -1073,7 +942,7 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
         match raw::wait_some(&mut self.requests, indices, None) {
             Some(count) => {
                 unsafe {
-                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None, None);
+                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None);
                 }
                 self.decrease_outstanding(count as usize);
 
@@ -1154,7 +1023,7 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
         match raw::test_some(&mut self.requests, indices, Some(raw_statuses)) {
             Some(count) => {
                 unsafe {
-                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None, None);
+                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None);
                 }
                 self.decrease_outstanding(count as usize);
 
@@ -1179,7 +1048,7 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
         match raw::test_some(&mut self.requests, indices, None) {
             Some(count) => {
                 unsafe {
-                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None, None);
+                    self.complete_some_requests(&indices[..count.value_as().unwrap()], None);
                 }
                 self.decrease_outstanding(count as usize);
 
@@ -1248,34 +1117,34 @@ impl<'a, Sc: Scope<'a>, S, R> RequestCollection<'a, Sc, S, R> {
 ///
 /// See `examples/immediate.rs`
 #[derive(Debug)]
-pub struct WaitGuard<'a, Sc: Scope<'a>, S = (), R = ()>(Option<Request<'a, Sc, S, R>>);
+pub struct WaitGuard<Owned>(Option<Request<Owned>>);
 
-impl<'a, Sc: Scope<'a>, S, R> Drop for WaitGuard<'a, Sc, S, R> {
+impl<Owned> Drop for WaitGuard<Owned> {
     fn drop(&mut self) {
         self.0.take().expect("invalid WaitGuard").wait();
     }
 }
 
-unsafe impl<'a, Sc: Scope<'a>, S, R> AsRaw for WaitGuard<'a, Sc, S, R> {
+unsafe impl<Owned> AsRaw for WaitGuard<Owned> {
     type Raw = MPI_Request;
     fn as_raw(&self) -> Self::Raw {
         self.0.as_ref().expect("invalid WaitGuard").as_raw()
     }
 }
 
-impl<'a, Sc: Scope<'a>, S, R> From<WaitGuard<'a, Sc, S, R>> for Request<'a, Sc, S, R> {
-    fn from(mut guard: WaitGuard<'a, Sc, S, R>) -> Self {
+impl<Owned> From<WaitGuard<Owned>> for Request<Owned> {
+    fn from(mut guard: WaitGuard<Owned>) -> Self {
         guard.0.take().expect("invalid WaitGuard")
     }
 }
 
-impl<'a, Sc: Scope<'a>, S, R> From<Request<'a, Sc, S, R>> for WaitGuard<'a, Sc, S, R> {
-    fn from(req: Request<'a, Sc, S, R>) -> Self {
+impl<Owned> From<Request<Owned>> for WaitGuard<Owned> {
+    fn from(req: Request<Owned>) -> Self {
         WaitGuard(Some(req))
     }
 }
 
-impl<'a, Sc: Scope<'a>, S, R> WaitGuard<'a, Sc, S, R> {
+impl<Owned> WaitGuard<Owned> {
     fn cancel(&self) {
         if let Some(ref req) = self.0 {
             req.cancel();
@@ -1292,16 +1161,16 @@ impl<'a, Sc: Scope<'a>, S, R> WaitGuard<'a, Sc, S, R> {
 ///
 /// See `examples/immediate.rs`
 #[derive(Debug)]
-pub struct CancelGuard<'a, Sc: Scope<'a>, S = (), R = ()>(WaitGuard<'a, Sc, S, R>);
+pub struct CancelGuard<Owned>(WaitGuard<Owned>);
 
-impl<'a, Sc: Scope<'a>, S, R> Drop for CancelGuard<'a, Sc, S, R> {
+impl<Owned> Drop for CancelGuard<Owned> {
     fn drop(&mut self) {
         self.0.cancel();
     }
 }
 
-impl<'a, Sc: Scope<'a>, S, R> From<CancelGuard<'a, Sc, S, R>> for WaitGuard<'a, Sc, S, R> {
-    fn from(mut guard: CancelGuard<'a, Sc, S, R>) -> Self {
+impl<Owned> From<CancelGuard<Owned>> for WaitGuard<Owned> {
+    fn from(mut guard: CancelGuard<Owned>) -> Self {
         unsafe {
             let inner = replace(&mut guard.0, uninitialized());
             forget(guard);
@@ -1310,14 +1179,14 @@ impl<'a, Sc: Scope<'a>, S, R> From<CancelGuard<'a, Sc, S, R>> for WaitGuard<'a, 
     }
 }
 
-impl<'a, Sc: Scope<'a>, S, R> From<WaitGuard<'a, Sc, S, R>> for CancelGuard<'a, Sc, S, R> {
-    fn from(guard: WaitGuard<'a, Sc, S, R>) -> Self {
+impl<Owned> From<WaitGuard<Owned>> for CancelGuard<Owned> {
+    fn from(guard: WaitGuard<Owned>) -> Self {
         CancelGuard(guard)
     }
 }
 
-impl<'a, Sc: Scope<'a>, S, R> From<Request<'a, Sc, S, R>> for CancelGuard<'a, Sc, S, R> {
-    fn from(req: Request<'a, Sc, S, R>) -> Self {
+impl<Owned> From<Request<Owned>> for CancelGuard<Owned> {
+    fn from(req: Request<Owned>) -> Self {
         CancelGuard(WaitGuard::from(req))
     }
 }

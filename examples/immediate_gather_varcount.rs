@@ -31,9 +31,9 @@ fn main() {
         let mut buf = vec![0; (size * (size - 1) / 2) as usize];
         {
             let mut partition = PartitionMut::new(&mut buf[..], counts, &displs[..]);
-            mpi::request::scope(|scope| {
+            mpi::request::scope(|_scope| {
                 root_process
-                    .immediate_gather_varcount_into_root(scope, &msg[..], &mut partition)
+                    .immediate_gather_varcount_into_root(&msg[..], &mut partition)
                     .wait();
             })
         }
@@ -45,9 +45,9 @@ fn main() {
         );
         println!("{:?}", buf);
     } else {
-        mpi::request::scope(|scope| {
+        mpi::request::scope(|_scope| {
             root_process
-                .immediate_gather_varcount_into(scope, &msg[..])
+                .immediate_gather_varcount_into(&msg[..])
                 .wait();
         });
     }

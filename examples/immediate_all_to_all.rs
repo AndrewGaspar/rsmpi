@@ -12,9 +12,9 @@ fn main() {
     let u = vec![rank; size as usize];
     let mut v = vec![0; size as usize];
 
-    mpi::request::scope(|scope| {
+    mpi::request::scope(|_scope| {
         world
-            .immediate_all_to_all_into(scope, &u[..], &mut v[..])
+            .immediate_all_to_all_into(&u[..], &mut v[..])
             .wait();
     });
 

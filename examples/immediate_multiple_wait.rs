@@ -2,7 +2,6 @@
 extern crate mpi;
 
 use mpi::traits::*;
-use mpi::request::StaticScope;
 
 fn main() {
     let universe = mpi::initialize().unwrap();
@@ -28,9 +27,9 @@ fn main() {
             .map(|target| {
                 world
                     .process_at_rank(target as i32)
-                    .immediate_send(StaticScope, &rank)
+                    .immediate_send(&rank)
             })
-            .collect_requests(StaticScope);
+            .collect_requests();
 
         // Creates, initiates, and collects receive requests into a RequestCollection.
         let mut recv_requests = (0..num_targets)
@@ -39,9 +38,9 @@ fn main() {
             .map(|(target, rank)| {
                 world
                     .process_at_rank(target as i32)
-                    .immediate_receive_into(StaticScope, rank)
+                    .immediate_receive_into(rank)
             })
-            .collect_requests(StaticScope);
+            .collect_requests();
 
         // Calls wait_some on the RequestCollection until it is empty.
         let mut received_from = vec![false; num_targets];

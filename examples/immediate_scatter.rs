@@ -15,13 +15,13 @@ fn main() {
     let mut x = 0 as Rank;
     if rank == root_rank {
         let v = (0..size).collect::<Vec<_>>();
-        mpi::request::scope(|scope| {
-            let req = root_process.immediate_scatter_into_root(scope, &v[..], &mut x);
+        mpi::request::scope(|_scope| {
+            let req = root_process.immediate_scatter_into_root(&v[..], &mut x);
             req.wait();
         });
     } else {
-        mpi::request::scope(|scope| {
-            let req = root_process.immediate_scatter_into(scope, &mut x);
+        mpi::request::scope(|_scope| {
+            let req = root_process.immediate_scatter_into(&mut x);
             req.wait();
         });
     }

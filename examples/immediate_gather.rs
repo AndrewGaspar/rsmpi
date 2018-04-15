@@ -16,9 +16,9 @@ fn main() {
 
     if world.rank() == root_rank {
         let mut a = vec![0u64; count];
-        mpi::request::scope(|scope| {
+        mpi::request::scope(|_scope| {
             root_process
-                .immediate_gather_into_root(scope, &i, &mut a[..])
+                .immediate_gather_into_root(&i, &mut a[..])
                 .wait();
         });
         println!("Root gathered sequence: {:?}.", a);
@@ -28,8 +28,8 @@ fn main() {
                 .all(|(a, &b)| b == 2u64.pow(a as u32 + 1))
         );
     } else {
-        mpi::request::scope(|scope| {
-            root_process.immediate_gather_into(scope, &i).wait();
+        mpi::request::scope(|_scope| {
+            root_process.immediate_gather_into(&i).wait();
         });
     }
 
@@ -41,9 +41,9 @@ fn main() {
 
     if world.rank() == root_rank {
         let mut t = vec![0u64; count * count];
-        mpi::request::scope(|scope| {
+        mpi::request::scope(|_scope| {
             root_process
-                .immediate_gather_into_root(scope, &a[..], &mut t[..])
+                .immediate_gather_into_root(&a[..], &mut t[..])
                 .wait();
         });
         println!("Root gathered table:");
@@ -56,8 +56,8 @@ fn main() {
                 .all(|(a, &b)| b == (a / count as u64 + 1) * (a % count as u64 + 1))
         );
     } else {
-        mpi::request::scope(|scope| {
-            root_process.immediate_gather_into(scope, &a[..]).wait();
+        mpi::request::scope(|_scope| {
+            root_process.immediate_gather_into(&a[..]).wait();
         });
     }
 
@@ -70,9 +70,9 @@ fn main() {
         {
             let mut rv =
                 unsafe { MutView::with_count_and_datatype(&mut t[..], count as Count, &d) };
-            mpi::request::scope(|scope| {
+            mpi::request::scope(|_scope| {
                 root_process
-                    .immediate_gather_into_root(scope, &sv, &mut rv)
+                    .immediate_gather_into_root(&sv, &mut rv)
                     .wait();
             });
         }
@@ -87,8 +87,8 @@ fn main() {
                 .all(|(a, &b)| b == (a / count as u64 + 1) * (a % count as u64 + 1))
         );
     } else {
-        mpi::request::scope(|scope| {
-            root_process.immediate_gather_into(scope, &sv).wait();
+        mpi::request::scope(|_scope| {
+            root_process.immediate_gather_into(&sv).wait();
         });
     }
 }

@@ -23,8 +23,8 @@ fn test_user_operations<C: Communicator>(comm: C) {
     let rank = comm.rank();
     let size = comm.size();
     let mut c = 0;
-    mpi::request::scope(|scope| {
-        comm.immediate_all_reduce_into(scope, &rank, &mut c, &op)
+    mpi::request::scope(|_scope| {
+        comm.immediate_all_reduce_into(&rank, &mut c, &op)
             .wait();
     });
     assert_eq!(c, size * (size - 1) / 2);
@@ -57,27 +57,27 @@ fn main() {
 
     if rank == root_rank {
         let mut sum: Rank = 0;
-        mpi::request::scope(|scope| {
+        mpi::request::scope(|_scope| {
             world
                 .process_at_rank(root_rank)
-                .immediate_reduce_into_root(scope, &rank, &mut sum, SystemOperation::sum())
+                .immediate_reduce_into_root(&rank, &mut sum, SystemOperation::sum())
                 .wait();
         });
         assert_eq!(sum, size * (size - 1) / 2);
     } else {
-        mpi::request::scope(|scope| {
+        mpi::request::scope(|_scope| {
             world
                 .process_at_rank(root_rank)
-                .immediate_reduce_into(scope, &rank, SystemOperation::sum())
+                .immediate_reduce_into(&rank, SystemOperation::sum())
                 .wait();
         });
     }
 
     let mut max: Rank = -1;
 
-    mpi::request::scope(|scope| {
+    mpi::request::scope(|_scope| {
         world
-            .immediate_all_reduce_into(scope, &rank, &mut max, SystemOperation::max())
+            .immediate_all_reduce_into(&rank, &mut max, SystemOperation::max())
             .wait();
     });
     assert_eq!(max, size - 1);
@@ -85,9 +85,9 @@ fn main() {
     let a = (0..size).collect::<Vec<_>>();
     let mut b: Rank = 0;
 
-    mpi::request::scope(|scope| {
+    mpi::request::scope(|_scope| {
         world
-            .immediate_reduce_scatter_block_into(scope, &a[..], &mut b, SystemOperation::product())
+            .immediate_reduce_scatter_block_into(&a[..], &mut b, SystemOperation::product())
             .wait();
     });
     assert_eq!(b, rank.pow(size as u32));
@@ -96,9 +96,9 @@ fn main() {
 
     let mut d = 0;
     let op = unsafe { UnsafeUserOperation::commutative(unsafe_add) };
-    mpi::request::scope(|scope| {
+    mpi::request::scope(|_scope| {
         world
-            .immediate_all_reduce_into(scope, &rank, &mut d, &op)
+            .immediate_all_reduce_into(&rank, &mut d, &op)
             .wait();
     });
     assert_eq!(d, size * (size - 1) / 2);
