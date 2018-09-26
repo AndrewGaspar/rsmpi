@@ -43,6 +43,7 @@
 
 use std::{mem, slice};
 use std::borrow::Borrow;
+use std::cell::Cell;
 use std::marker::PhantomData;
 use std::os::raw::c_void;
 use std::rc::Rc;
@@ -54,8 +55,8 @@ use super::{Address, Count};
 
 use ffi;
 use ffi::MPI_Datatype;
-
 use raw::traits::*;
+use request::Scope;
 
 /// Datatype traits
 pub mod traits {
@@ -727,6 +728,61 @@ unsafe impl<'a, T: Equivalence> Pointer for Arc<Vec<T>> {
 }
 
 unsafe impl<'a, T: Equivalence> Buffer for Arc<Vec<T>> {}
+
+/// Owns a [`Buffer`](trait.Buffer.html) for the purpose of verifying safe ownership of a raw borrow
+/// for the lifetime of a [`Request`](trait.Request.html).
+pub struct ScopedBuffer<'a, Buf: 'a + Buffer, Sc: Scope<'a>> {
+    #[allow(dead_code)]
+    buffer: Buf,
+    scope: Sc,
+    phantom: PhantomData<Cell<&'a ()>>,
+}
+
+impl<'a, Buf: 'a + Buffer, Sc: Scope<'a>> ScopedBuffer<'a, Buf, Sc> {
+    pub(crate) fn new(buffer: Buf, scope: Sc) -> Self {
+        scope.register();
+        Self {
+            buffer,
+            scope,
+            phantom: Default::default(),
+        }
+    }
+}
+
+impl<'a, Buf: 'a + Buffer, Sc: Scope<'a>> Drop for ScopedBuffer<'a, Buf, Sc> {
+    fn drop(&mut self) {
+        unsafe {
+            self.scope.unregister();
+        }
+    }
+}
+
+/// Owns a [`Buffer`](trait.Buffer.html) for the purpose of verifying safe ownership of a raw
+/// mutable borrow for the lifetime of a [`Request`](trait.Request.html).
+pub struct ScopedBufferMut<'a, Buf: 'a + BufferMut, Sc: Scope<'a>> {
+    buffer: Buf,
+    scope: Sc,
+    phantom: PhantomData<Cell<&'a ()>>,
+}
+
+impl<'a, Buf: 'a + BufferMut, Sc: Scope<'a>> ScopedBufferMut<'a, Buf, Sc> {
+    pub(crate) fn new(buffer: Buf, scope: Sc) -> Self {
+        scope.register();
+        Self {
+            buffer,
+            scope,
+            phantom: Default::default(),
+        }
+    }
+}
+
+impl<'a, Buf: 'a + BufferMut, Sc: Scope<'a>> Drop for ScopedBufferMut<'a, Buf, Sc> {
+    fn drop(&mut self) {
+        unsafe {
+            self.scope.unregister();
+        }
+    }
+}
 
 /// An immutable dynamically-typed buffer.
 ///

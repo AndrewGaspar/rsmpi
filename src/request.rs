@@ -37,7 +37,8 @@ use conv::ConvUtil;
 
 use ffi;
 use ffi::{MPI_Request, MPI_Status};
-
+use datatype::{ScopedBuffer, ScopedBufferMut};
+use traits::*;
 use point_to_point::Status;
 use raw::traits::*;
 use raw;
@@ -1184,22 +1185,20 @@ impl<Owned> From<Request<Owned>> for CancelGuard<Owned> {
 /// [`StaticScope`](struct.StaticScope.html) used internally by the `request` module.
 ///
 /// This trait is an implementation detail.  You shouldn’t have to use or implement this trait.
-pub unsafe trait Scope<'a> {
+pub unsafe trait Scope<'a>: Clone {
     /// Registers a request with the scope.
-    fn register(&self) {
-        self.register_many(1)
-    }
-
-    /// Registers multiple requests with the scope.
-    fn register_many(&self, count: usize);
+    fn register(&self);
 
     /// Unregisters a request from the scope.
-    unsafe fn unregister(&self) {
-        self.unregister_many(1)
+    unsafe fn unregister(&self);
+
+    fn attach<Buf: 'a + Buffer>(&self, buf: Buf) -> ScopedBuffer<'a, Buf, Self> {
+        ScopedBuffer::new(buf, self.clone())
     }
 
-    /// Unregisters multiple requests from the scope.
-    unsafe fn unregister_many(&self, count: usize);
+    fn attach_mut<Buf: 'a + BufferMut>(&self, buf: Buf) -> ScopedBufferMut<'a, Buf, Self> {
+        ScopedBufferMut::new(buf, self.clone())
+    }
 }
 
 /// The scope that lasts as long as the entire execution of the program
@@ -1216,8 +1215,8 @@ pub unsafe trait Scope<'a> {
 pub struct StaticScope;
 
 unsafe impl Scope<'static> for StaticScope {
-    fn register_many(&self, _count: usize) {}
-    unsafe fn unregister_many(&self, _count: usize) {}
+    fn register(&self) {}
+    unsafe fn unregister(&self) {}
 }
 
 /// A temporary scope that lasts no more than the lifetime `'a`
@@ -1249,15 +1248,15 @@ impl<'a> Drop for LocalScope<'a> {
 }
 
 unsafe impl<'a, 'b> Scope<'a> for &'b LocalScope<'a> {
-    fn register_many(&self, count: usize) {
-        self.num_requests.set(self.num_requests.get() + count)
+    fn register(&self) {
+        self.num_requests.set(self.num_requests.get() + 1)
     }
 
-    unsafe fn unregister_many(&self, count: usize) {
+    unsafe fn unregister(&self) {
         self.num_requests.set(
             self.num_requests
                 .get()
-                .checked_sub(count)
+                .checked_sub(1)
                 .expect("unregister has been called more times than register"),
         )
     }
