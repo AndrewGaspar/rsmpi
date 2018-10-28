@@ -23,6 +23,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::{mem, process};
 
+use super::Count;
 #[cfg(not(msmpi))]
 use super::Tag;
 use ffi;
@@ -31,6 +32,8 @@ use ffi::{MPI_Comm, MPI_Group};
 use raw::traits::*;
 
 use datatype::traits::*;
+
+use conv::ConvUtil;
 
 /// Topology traits
 pub mod traits {
@@ -100,6 +103,45 @@ impl AsCommunicator for SystemCommunicator {
     }
 }
 
+/// An enum describing the topology of a communicator
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum Topology {
+    /// Graph topology type
+    Graph,
+    /// Cartesian topology type
+    Cartesian,
+    /// DistributedGraph topology type
+    DistributedGraph,
+    /// Undefined topology type
+    Undefined,
+}
+
+/// An enum indirecting between different concrete communicator topology types
+pub enum IntoTopology {
+    /// Graph topology type
+    Graph(GraphCommunicator),
+    /// Cartesian topology type
+    Cartesian(CartesianCommunicator),
+    /// DistributedGraph topology type
+    DistributedGraph(DistributedGraphCommunicator),
+    /// Undefined topology type
+    Undefined(UserCommunicator),
+}
+
+/// Contains arrays describing the layout of the CartesianCommunicator.
+///
+/// For i in CartesianCommunicator::num_dimensions, dims[i] is the extent of the array in dimension
+/// i, periods[i] is true if dimension i is periodic, and coords[i] is the cartesian coordinate for
+/// the local rank in dimension i.
+pub struct CartesianLayout {
+    /// dims[i] is the extent of the array in dimension i
+    pub dims: Vec<Count>,
+    /// periods[i] is true if dimension i is periodic
+    pub periods: Vec<bool>,
+    /// coords[i] is the cartesian coordinate for the local rank in dimension i
+    pub coords: Vec<Count>,
+}
+
 /// A user-defined communicator
 ///
 /// # Standard section(s)
@@ -121,6 +163,42 @@ impl UserCommunicator {
     fn from_raw_unchecked(raw: MPI_Comm) -> UserCommunicator {
         debug_assert_ne!(raw, unsafe_extern_static!(ffi::RSMPI_COMM_NULL));
         UserCommunicator(raw)
+    }
+
+    /// Gets the topology of the communicator.
+    ///
+    /// # Standard section(s)
+    /// 7.5.5
+    pub fn topology(&self) -> Topology {
+        unsafe {
+            let mut status: c_int = mem::uninitialized();
+            ffi::MPI_Topo_test(self.as_raw(), &mut status);
+
+            if status == ffi::RSMPI_GRAPH {
+                Topology::Graph
+            } else if status == ffi::RSMPI_CART {
+                Topology::Cartesian
+            } else if status == ffi::RSMPI_DIST_GRAPH {
+                Topology::DistributedGraph
+            } else if status == ffi::RSMPI_UNDEFINED {
+                Topology::Undefined
+            } else {
+                panic!("Unexpected Topology type!")
+            }
+        }
+    }
+
+    /// Converts the communicator into its precise communicator type.
+    ///
+    /// # Standard section(s)
+    /// 7.5.5
+    pub fn into_topology(self) -> IntoTopology {
+        match self.topology() {
+            Topology::Graph => unimplemented!(),
+            Topology::Cartesian => IntoTopology::Cartesian(CartesianCommunicator(self)),
+            Topology::DistributedGraph => unimplemented!(),
+            Topology::Undefined => IntoTopology::Undefined(self),
+        }
     }
 }
 
@@ -148,6 +226,262 @@ impl Drop for UserCommunicator {
         assert_eq!(self.0, unsafe_extern_static!(ffi::RSMPI_COMM_NULL));
     }
 }
+
+impl From<CartesianCommunicator> for UserCommunicator {
+    fn from(cart_comm: CartesianCommunicator) -> Self {
+        cart_comm.0
+    }
+}
+
+/// A user-defined communicator with a Cartesian topology.
+///
+/// # Standard Section(s)
+///
+/// 7
+pub struct CartesianCommunicator(UserCommunicator);
+
+impl CartesianCommunicator {
+    /// If the raw value is the null handle, or the communicator is not a CartesianCommunicator,
+    /// returns `None`.
+    pub unsafe fn from_raw(raw: MPI_Comm) -> Option<CartesianCommunicator> {
+        UserCommunicator::from_raw(raw).and_then(|comm| match comm.into_topology() {
+            IntoTopology::Cartesian(c) => Some(c),
+            incorrect => {
+                // Forget the comm object so it's not dropped
+                mem::forget(incorrect);
+
+                None
+            }
+        })
+    }
+
+    /// Wraps the raw value without checking for null handle
+    pub unsafe fn from_raw_unchecked(raw: MPI_Comm) -> CartesianCommunicator {
+        debug_assert_ne!(raw, ffi::RSMPI_COMM_NULL);
+        CartesianCommunicator(UserCommunicator::from_raw_unchecked(raw))
+    }
+
+    /// Returns the number of dimensions that the Cartesian communicator was established over.
+    ///
+    /// # Standard section(s)
+    /// 7.5.5 (MPI_Cartdim_get)
+    pub fn num_dimensions(&self) -> Count {
+        unsafe {
+            let mut count = mem::uninitialized();
+            ffi::MPI_Cartdim_get(self.as_raw(), &mut count);
+            count
+        }
+    }
+
+    /// Returns the topological structure of the Cartesian communicator
+    ///
+    /// # Standard section(s)
+    /// 7.5.5 (MPI_Cart_get)
+    pub fn get_layout_into(&self, dims: &mut [Count], periods: &mut [bool], coords: &mut [Count]) {
+        assert_eq!(
+            dims.len(),
+            periods.len(),
+            "dims, periods, and coords must be the same length"
+        );
+        assert_eq!(
+            dims.len(),
+            coords.len(),
+            "dims, periods, and coords must be the same length"
+        );
+
+        assert_eq!(
+            self.num_dimensions()
+                .value_as::<usize>()
+                .expect("Received unexpected value from MPI_Cartdim_get"),
+            dims.len(),
+            "dims, periods, and coords must be equal in length to num_dimensions()"
+        );
+
+        let mut periods_int = vec![0; periods.len()];
+
+        unsafe {
+            ffi::MPI_Cart_get(
+                self.as_raw(),
+                self.num_dimensions(),
+                dims.as_mut_ptr(),
+                periods_int.as_mut_ptr(),
+                coords.as_mut_ptr(),
+            );
+        }
+
+        for (p, pi) in periods.iter_mut().zip(periods_int.iter()) {
+            *p = match pi {
+                0 => false,
+                1 => true,
+                _ => panic!(
+                    "Received an invalid boolean value ({}) from the MPI implementation",
+                    pi
+                ),
+            }
+        }
+    }
+
+    /// Returns the topological structure of the Cartesian communicator
+    ///
+    /// # Standard section(s)
+    /// 7.5.5 (MPI_Cart_get)
+    pub fn get_layout(&self) -> CartesianLayout {
+        let num_dims = self
+            .num_dimensions()
+            .value_as()
+            .expect("Received unexpected value from MPI_Cartdim_get");
+
+        let mut layout = CartesianLayout {
+            dims: vec![0; num_dims],
+            periods: vec![false; num_dims],
+            coords: vec![0; num_dims],
+        };
+
+        self.get_layout_into(
+            &mut layout.dims[..],
+            &mut layout.periods[..],
+            &mut layout.coords[..],
+        );
+
+        layout
+    }
+
+    /// Converts a set of cartesian coordinates to its rank in the CartesianCommunicator.
+    ///
+    /// This function does not check whether coords is a valid input - the caller is responsible for
+    /// ensuring the arguments are in range. You should prefer
+    /// [coordinates_to_rank](struct.CartesianCommunicator.html#method.coordinates_to_rank)
+    /// unless you have a reason to use the unchecked version.
+    ///
+    /// `coords.len()` must equal `CartesianCommunicator::num_dimensions()`.
+    ///
+    /// For dimension i with `periods[i] == true`, if the coordinate, `coords[i]`, is out of range,
+    /// it is shifted back to the interval `0 <= coords[i] < dims[i]`. Out-of-range coordinates are
+    /// erroneous for non-periodic dimensions.
+    ///
+    /// # Standard section(s)
+    /// 7.5.5
+    pub unsafe fn coordinates_to_rank_unchecked(&self, coords: &[Count]) -> Rank {
+        let mut rank: Rank = mem::uninitialized();
+        ffi::MPI_Cart_rank(self.as_raw(), coords.as_ptr(), &mut rank);
+        rank
+    }
+
+    /// Converts a set of cartesian coordinates to its rank in the CartesianCommunicator.
+    ///
+    /// This function panics on invalid input.
+    ///
+    /// `coords.len()` must equal `CartesianCommunicator::num_dimensions()`.
+    ///
+    /// For dimension i with `periods[i] == true`, if the coordinate, `coords[i]`, is out of range,
+    /// it is shifted back to the interval `0 <= coords[i] < dims[i]`. Out-of-range coordinates are
+    /// erroneous for non-periodic dimensions.
+    ///
+    /// # Standard section(s)
+    /// 7.5.5
+    pub fn coordinates_to_rank(&self, coords: &[Count]) -> Rank {
+        let num_dims = self
+            .num_dimensions()
+            .value_as()
+            .expect("Received unexpected value from MPI_Cartdim_get");
+
+        assert_eq!(
+            num_dims,
+            coords.len(),
+            "The coordinates slice must be the same size as the number of dimension in the \
+             CartesianCommunicator"
+        );
+
+        let layout = self.get_layout();
+
+        for i in 0..num_dims {
+            if !layout.periods[i] {
+                assert!(
+                    coords[i] > 0,
+                    "The non-periodic coordinate (coords[{}] = {}) must be greater than 0.",
+                    i,
+                    coords[i]
+                );
+                assert!(
+                    coords[i] <= layout.dims[i],
+                    "The non-period coordinate (coords[{}] = {}) must be within the bounds of the \
+                     CartesianCoordinator (dims[{}] = {})",
+                    i,
+                    coords[i],
+                    i,
+                    layout.dims[i]
+                );
+            }
+        }
+
+        unsafe { self.coordinates_to_rank_unchecked(coords) }
+    }
+
+    /// Receives into `coords` the cartesian coordinates of `rank`. Input `rank` is not checked.
+    /// This method is unsafe if `rank` is not between `0` and `Communicator::size()`.
+    ///
+    /// # Standard section(s)
+    /// 7.5.5
+    pub unsafe fn rank_to_coordinates_into_unchecked(&self, rank: Rank, coords: &mut [Count]) {
+        ffi::MPI_Cart_coords(self.as_raw(), rank, coords.count(), coords.as_mut_ptr());
+    }
+
+    /// Receives into `coords` the cartesian coordinates of `rank`.
+    /// This method panics if `rank` is not between `0` and `Communicator::size()`.
+    ///
+    /// # Standard section(s)
+    /// 7.5.5
+    pub fn rank_to_coordinates_into(&self, rank: Rank, coords: &mut [Count]) {
+        assert!(
+            rank >= 0 && rank < self.size(),
+            "rank ({}) must be in the range [0,{})",
+            rank,
+            self.size()
+        );
+
+        unsafe { self.rank_to_coordinates_into_unchecked(rank, coords) }
+    }
+
+    /// Returns an array of `coords`, of size `CartesianCommunicator::num_dimensions()`, with the
+    /// cartesian coordinates of `rank`.
+    ///
+    /// # Standard section(s)
+    /// 7.5.5
+    pub fn rank_to_coordinates(&self, rank: Rank) -> Vec<Count> {
+        let mut coords = vec![
+            0;
+            self.num_dimensions()
+                .value_as()
+                .expect("Received unexpected value from MPI_Cartdim_get")
+        ];
+
+        self.rank_to_coordinates_into(rank, &mut coords[..]);
+
+        coords
+    }
+}
+
+impl Communicator for CartesianCommunicator {}
+
+impl AsCommunicator for CartesianCommunicator {
+    type Out = CartesianCommunicator;
+    fn as_communicator(&self) -> &Self::Out {
+        self
+    }
+}
+
+unsafe impl AsRaw for CartesianCommunicator {
+    type Raw = MPI_Comm;
+    fn as_raw(&self) -> Self::Raw {
+        self.0.as_raw()
+    }
+}
+
+/// Unimplemented
+pub struct GraphCommunicator;
+
+/// Unimplemented
+pub struct DistributedGraphCommunicator;
 
 /// A color used in a communicator split
 #[derive(Copy, Clone, Debug)]
@@ -431,6 +765,38 @@ pub trait Communicator: AsRaw<Raw = MPI_Comm> {
 
             let buf_cstr = CStr::from_ptr(buf.as_ptr());
             buf_cstr.to_string_lossy().into_owned()
+        }
+    }
+
+    /// Create a Cartesian Communicator
+    ///
+    /// # Standard section(s)
+    /// 7.5.1
+    fn create_cartesian_communicator(
+        &self,
+        dims: &[Count],
+        periods: &[bool],
+        reorder: bool,
+    ) -> Option<CartesianCommunicator> {
+        assert_eq!(
+            dims.len(),
+            periods.len(),
+            "dims and periods must be parallel, equal-sized arrays"
+        );
+
+        let periods: Vec<_> = periods.iter().map(|x| *x as i32).collect();
+
+        unsafe {
+            let mut comm_cart = ffi::RSMPI_COMM_NULL;
+            ffi::MPI_Cart_create(
+                self.as_raw(),
+                dims.count(),
+                dims.as_ptr(),
+                periods.as_ptr(),
+                reorder as Count,
+                &mut comm_cart,
+            );
+            CartesianCommunicator::from_raw(comm_cart)
         }
     }
 }
