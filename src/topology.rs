@@ -274,39 +274,26 @@ impl CartesianCommunicator {
 
     /// Returns the topological structure of the Cartesian communicator
     ///
+    /// Behavior is undefined if `dims`, `periods`, and `coords` are not of length
+    /// `CartesianCommunicator::num_dimensions()`
+    ///
     /// # Standard section(s)
     /// 7.5.5 (MPI_Cart_get)
-    pub fn get_layout_into(&self, dims: &mut [Count], periods: &mut [bool], coords: &mut [Count]) {
-        assert_eq!(
-            dims.len(),
-            periods.len(),
-            "dims, periods, and coords must be the same length"
-        );
-        assert_eq!(
-            dims.len(),
-            coords.len(),
-            "dims, periods, and coords must be the same length"
-        );
+    pub unsafe fn get_layout_into_unchecked(
+        &self,
+        dims: &mut [Count],
+        periods: &mut [bool],
+        coords: &mut [Count],
+    ) {
+        let mut periods_int: IntArray = smallvec![mem::uninitialized(); periods.len()];
 
-        assert_eq!(
-            self.num_dimensions()
-                .value_as::<usize>()
-                .expect("Received unexpected value from MPI_Cartdim_get"),
-            dims.len(),
-            "dims, periods, and coords must be equal in length to num_dimensions()"
+        ffi::MPI_Cart_get(
+            self.as_raw(),
+            self.num_dimensions(),
+            dims.as_mut_ptr(),
+            periods_int.as_mut_ptr(),
+            coords.as_mut_ptr(),
         );
-
-        let mut periods_int: IntArray = smallvec![unsafe { mem::uninitialized() }; periods.len()];
-
-        unsafe {
-            ffi::MPI_Cart_get(
-                self.as_raw(),
-                self.num_dimensions(),
-                dims.as_mut_ptr(),
-                periods_int.as_mut_ptr(),
-                coords.as_mut_ptr(),
-            );
-        }
 
         for (p, pi) in periods.iter_mut().zip(periods_int.iter()) {
             *p = match pi {
@@ -318,6 +305,31 @@ impl CartesianCommunicator {
                 ),
             }
         }
+    }
+
+    /// Returns the topological structure of the Cartesian communicator
+    ///
+    /// # Standard section(s)
+    /// 7.5.5 (MPI_Cart_get)
+    pub fn get_layout_into(&self, dims: &mut [Count], periods: &mut [bool], coords: &mut [Count]) {
+        assert_eq!(
+            dims.count(),
+            periods.count(),
+            "dims, periods, and coords must be the same length"
+        );
+        assert_eq!(
+            dims.count(),
+            coords.count(),
+            "dims, periods, and coords must be the same length"
+        );
+
+        assert_eq!(
+            self.num_dimensions(),
+            dims.count(),
+            "dims, periods, and coords must be equal in length to num_dimensions()"
+        );
+
+        unsafe { self.get_layout_into_unchecked(dims, periods, coords) }
     }
 
     /// Returns the topological structure of the Cartesian communicator
