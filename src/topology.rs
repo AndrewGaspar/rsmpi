@@ -23,17 +23,16 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::{mem, process};
 
+use conv::ConvUtil;
+
 use super::Count;
+use super::IntArray;
 #[cfg(not(msmpi))]
 use super::Tag;
+use datatype::traits::*;
 use ffi;
 use ffi::{MPI_Comm, MPI_Group};
-
 use raw::traits::*;
-
-use datatype::traits::*;
-
-use conv::ConvUtil;
 
 /// Topology traits
 pub mod traits {
@@ -297,7 +296,7 @@ impl CartesianCommunicator {
             "dims, periods, and coords must be equal in length to num_dimensions()"
         );
 
-        let mut periods_int = vec![0; periods.len()];
+        let mut periods_int: IntArray = smallvec![0; periods.len()];
 
         unsafe {
             ffi::MPI_Cart_get(
