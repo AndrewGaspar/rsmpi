@@ -35,6 +35,18 @@ fn main() {
     assert_eq!([2 as mpi::Count, 2], &dims[..]);
     assert_eq!([false, true], &periods[..]);
 
-    assert!(0 <= coords[0] && coords[0] < 2);
-    assert!(0 <= coords[1] && coords[1] < 2);
+    let xrank = coords[0];
+    let yrank = coords[1];
+
+    assert!(0 <= xrank && xrank < 2);
+    assert!(0 <= yrank && yrank < 2);
+
+    let xcomm = cart_comm.subgroup(&[true, false]);
+    let ycomm = cart_comm.subgroup(&[false, true]);
+
+    assert_eq!(2, xcomm.size());
+    assert_eq!(xrank, xcomm.rank());
+
+    assert_eq!(2, ycomm.size());
+    assert_eq!(yrank, ycomm.rank());
 }

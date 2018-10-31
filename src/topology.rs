@@ -296,7 +296,7 @@ impl CartesianCommunicator {
             "dims, periods, and coords must be equal in length to num_dimensions()"
         );
 
-        let mut periods_int: IntArray = smallvec![0; periods.len()];
+        let mut periods_int: IntArray = smallvec![unsafe { mem::uninitialized() }; periods.len()];
 
         unsafe {
             ffi::MPI_Cart_get(
@@ -457,6 +457,37 @@ impl CartesianCommunicator {
         self.rank_to_coordinates_into(rank, &mut coords[..]);
 
         coords
+    }
+
+    /// Partitions an existing Cartesian communicator into a new Cartesian communicator in a lower
+    /// dimension.
+    ///
+    /// The size of `retain` is not checked. The behavior is not defined if `retain.len()` is not
+    /// greater than or equal to `CartesianCommunicator::num_dimensions()`.
+    ///
+    /// # Standard section(s)
+    /// 7.5.7
+    pub unsafe fn subgroup_unchecked(&self, retain: &[bool]) -> CartesianCommunicator {
+        let retain_int: IntArray = retain.iter().map(|b| *b as _).collect();
+
+        let mut newcomm = mem::uninitialized();
+        ffi::MPI_Cart_sub(self.as_raw(), retain_int.as_ptr(), &mut newcomm);
+        CartesianCommunicator::from_raw_unchecked(newcomm)
+    }
+
+    /// Partitions an existing Cartesian communicator into a new Cartesian communicator in a lower
+    /// dimension.
+    ///
+    /// # Standard section(s)
+    /// 7.5.7
+    pub fn subgroup(&self, retain: &[bool]) -> CartesianCommunicator {
+        assert_eq!(
+            self.num_dimensions(),
+            retain.count(),
+            "The length of the retained dimensions array must be equal to the number of dimensions \
+            in the CartesianCommunicator");
+
+        unsafe { self.subgroup_unchecked(retain) }
     }
 }
 
