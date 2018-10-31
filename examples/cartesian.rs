@@ -49,4 +49,42 @@ fn main() {
 
     assert_eq!(2, ycomm.size());
     assert_eq!(yrank, ycomm.rank());
+
+    // the first dimension is non-periodic
+    let (x_src, x_dest) = cart_comm.shift(0, 1);
+    if xrank == 0 {
+        assert!(x_src.is_none());
+        assert!(x_dest.is_some());
+
+        let coords = cart_comm.rank_to_coordinates(x_dest.unwrap());
+        assert_eq!(1, coords[0]);
+    } else {
+        assert_eq!(1, xrank);
+
+        assert!(x_src.is_some());
+        assert!(x_dest.is_none());
+
+        let coords = cart_comm.rank_to_coordinates(x_src.unwrap());
+        assert_eq!(0, coords[0]);
+    }
+
+    // the second dimension is periodic
+    {
+        let (y_src, y_dest) = cart_comm.shift(1, 1);
+        assert!(y_src.is_some());
+        assert!(y_dest.is_some());
+
+        let y_src_coords = cart_comm.rank_to_coordinates(y_src.unwrap());
+        assert_eq!((yrank - 1) & 0b1, y_src_coords[1]);
+
+        let y_dest_coords = cart_comm.rank_to_coordinates(y_dest.unwrap());
+        assert_eq!((yrank + 1) & 0b1, y_dest_coords[1]);
+    }
+
+    // second dimension shift by 2 should be identity
+    {
+        let (y_src, y_dest) = cart_comm.shift(1, 2);
+        assert_eq!(comm.rank(), y_src.unwrap());
+        assert_eq!(comm.rank(), y_dest.unwrap());
+    }
 }

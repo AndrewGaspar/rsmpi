@@ -259,6 +259,69 @@ impl CartesianCommunicator {
         coords
     }
 
+    /// Retrieves targets in `dimension` shifted from the current rank by displacing in the negative
+    /// direction by `displacement` units for the first returned rank and in the positive direction
+    /// for the second returned rank.
+    ///
+    /// Behavior is undefined if `dimension` is outside the range `[0,ndims)`
+    ///
+    /// # Standard section(s)
+    /// 7.5.6
+    pub unsafe fn shift_unchecked(
+        &self,
+        dimension: Count,
+        displacement: Count,
+    ) -> (Option<Rank>, Option<Rank>) {
+        let mut rank_source = mem::uninitialized();
+        let mut rank_destination = mem::uninitialized();
+        ffi::MPI_Cart_shift(
+            self.as_raw(),
+            dimension,
+            displacement,
+            &mut rank_source,
+            &mut rank_destination,
+        );
+
+        let rank_source = if rank_source != ffi::RSMPI_PROC_NULL {
+            Some(rank_source)
+        } else {
+            None
+        };
+
+        let rank_destination = if rank_destination != ffi::RSMPI_PROC_NULL {
+            Some(rank_destination)
+        } else {
+            None
+        };
+
+        (rank_source, rank_destination)
+    }
+
+    /// Retrieves targets in `dimension` shifted from the current rank by displacing in the negative
+    /// direction by `displacement` units for the first returned rank and in the positive direction
+    /// for the second returned rank.
+    ///
+    /// Panics if `dimension` is outside the range `[0,ndims)`
+    ///
+    /// # Standard section(s)
+    /// 7.5.6
+    pub fn shift(&self, dimension: Count, displacement: Count) -> (Option<Rank>, Option<Rank>) {
+        assert!(
+            dimension >= 0,
+            "dimension ({}) cannot be negative",
+            dimension
+        );
+
+        assert!(
+            dimension < self.num_dimensions(),
+            "dimension ({}) is not valid for this communicator (num_dimensions = {})",
+            dimension,
+            self.num_dimensions(),
+        );
+
+        unsafe { self.shift_unchecked(dimension, displacement) }
+    }
+
     /// Partitions an existing Cartesian communicator into a new Cartesian communicator in a lower
     /// dimension.
     ///
