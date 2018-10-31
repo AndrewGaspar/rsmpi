@@ -508,9 +508,11 @@ unsafe impl AsRaw for CartesianCommunicator {
 }
 
 /// Unimplemented
+#[allow(missing_copy_implementations)]
 pub struct GraphCommunicator;
 
 /// Unimplemented
+#[allow(missing_copy_implementations)]
 pub struct DistributedGraphCommunicator;
 
 /// A color used in a communicator split
