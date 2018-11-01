@@ -2,7 +2,6 @@
 extern crate mpi;
 
 use mpi::traits::*;
-use mpi::request::WaitGuard;
 
 const BUFFER_SIZE: usize = 10 * 1024 * 1024;
 
@@ -20,10 +19,19 @@ fn main() {
     let world = universe.world();
 
     let x = vec![std::f32::consts::PI; 1024];
+<<<<<<< Updated upstream
     let mut y = vec![0.0; 1024];
     mpi::request::scope(|_scope| {
         let _rreq = WaitGuard::from(world.any_process().immediate_receive_into(&mut y[..]));
         world.this_process().buffered_send(&x[..]);
     });
     assert_eq!(x, y);
+=======
+    let y = vec![0.0f32; 1024];
+
+    let rreq = world.any_process().immediate_receive_into(y);
+    world.this_process().buffered_send(&x[..]);
+
+    assert_eq!(x, rreq.wait_data_without_status());
+>>>>>>> Stashed changes
 }

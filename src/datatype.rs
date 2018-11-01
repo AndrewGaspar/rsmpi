@@ -58,6 +58,8 @@ use ffi::MPI_Datatype;
 use raw::traits::*;
 use request::Scope;
 
+use request::{Scope, Scoped};
+
 /// Datatype traits
 pub mod traits {
     pub use super::{AsDatatype, Buffer, BufferMut, Collection, Datatype, Equivalence, Partitioned,
@@ -423,6 +425,36 @@ pub unsafe trait PointerMut {
     fn pointer_mut(&mut self) -> *mut c_void;
 }
 
+<<<<<<< Updated upstream
+=======
+/// Represents a message that can be sent by a blocking MPI trait. 
+pub unsafe trait Message {
+    type Out: Datatype;
+
+    /// Pointer to start of message
+    fn pointer(&self) -> *const c_void;
+
+    /// Count of elements in the message
+    fn count(&self) -> usize;
+
+    
+}
+
+/// Implements a buffer with a known length.
+///
+/// Marked as `unsafe` because an incorrect implementation can cause memory
+/// errors.
+pub unsafe trait Buffer: AsDatatype + Collection {
+    /// The type of the exclusive owner of the `Buffer`. If the implementation is borrowing the
+    /// buffer from another source, then `Owner` should be `()`. Otherwise, is a Rust owner of heap
+    /// allocated memory like `Vec<Item>`.
+    type Owner;
+
+    /// Take ownership of the buffer.
+    fn take_ownership(self) -> Self::Owner;
+}
+
+>>>>>>> Stashed changes
 fn check_length(len: usize) -> Count {
     len.value_as()
         .expect("Length of buffer cannout be expressed as an MPI Count.")
@@ -441,27 +473,40 @@ pub unsafe trait Buffer: AsDatatype + Collection + Pointer {}
 pub unsafe trait BufferMut: AsDatatype + Collection + PointerMut {}
 
 // impls for &'a T
+<<<<<<< Updated upstream
 unsafe impl<'a, T: Equivalence> AsDatatype for &'a T {
+=======
+unsafe impl<'a, T: Equivalence, Sc: Scope<'a>> Buffer for Scoped<'a, &'a T, Sc> {
+    type Owner = ();
+    fn take_ownership(self) -> Self::Owner {}
+}
+
+unsafe impl<'a, T: Equivalence, Sc: Scope<'a>> AsDatatype for Scoped<'a, &'a T, Sc> {
+>>>>>>> Stashed changes
     type Out = <T as Equivalence>::Out;
     fn as_datatype(&self) -> Self::Out {
         <T as Equivalence>::equivalent_datatype()
     }
 }
 
-unsafe impl<'a, T: Equivalence> Collection for &'a T {
+unsafe impl<'a, T: Equivalence, Sc: Scope<'a>> Collection for Scoped<'a, &'a T, Sc> {
     fn count(&self) -> Count {
         1
     }
 }
 
-unsafe impl<'a, T: Equivalence> Pointer for &'a T {
+unsafe impl<'a, T: Equivalence, Sc: Scope<'a>> Pointer for Scoped<'a, &'a T, Sc> {
     fn pointer(&self) -> *const c_void {
-        let p: *const T = &**self;
+        let p: *const T = &***self;
         p as *const _
     }
 }
 
+<<<<<<< Updated upstream
 unsafe impl<'a, T: Equivalence> Buffer for &'a T {}
+=======
+unsafe impl<'a, T: Equivalence, Sc: Scope<'a>> ReadBuffer for Scoped<'a, &'a T, Sc> {}
+>>>>>>> Stashed changes
 
 // impls for &'a mut T
 unsafe impl<'a, T: Equivalence> AsDatatype for &'a mut T {

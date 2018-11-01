@@ -37,28 +37,50 @@ fn main() {
     };
 
     let left_send = left_requests.map(|(left_send, left_recv)| {
+<<<<<<< Updated upstream
         assert_eq!(
             vec![rank - 1; size as usize],
             left_recv.wait_data_without_status()
         );
+=======
+        let recv_data = left_recv.wait_data();
+
+        assert_eq!(vec![rank - 1; size as usize], recv_data);
+>>>>>>> Stashed changes
 
         left_send
     });
 
     let right_send = right_requests.map(|(right_send, right_recv)| {
+<<<<<<< Updated upstream
         assert_eq!(
             vec![rank + 1; size as usize],
             right_recv.wait_data_without_status()
         );
+=======
+        let recv_data = right_recv.wait_data();
+
+        assert_eq!(vec![rank + 1; size as usize], recv_data);
+>>>>>>> Stashed changes
 
         right_send
     });
 
     if let Some(sreq) = left_send {
+<<<<<<< Updated upstream
         assert_eq!(&my_data[..], sreq.wait_data_without_status());
     }
 
     if let Some(sreq) = right_send {
         assert_eq!(&my_data[..], sreq.wait_data_without_status());
+=======
+        let send_data = sreq.wait_data();
+        assert_eq!(&my_data[..], send_data);
+    }
+
+    if let Some(sreq) = right_send {
+        let send_data = sreq.wait_data();
+        assert_eq!(&my_data[..], send_data);
+>>>>>>> Stashed changes
     }
 }

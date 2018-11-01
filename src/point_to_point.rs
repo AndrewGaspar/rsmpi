@@ -23,7 +23,11 @@ use ffi::{MPI_Message, MPI_Request, MPI_Status};
 
 use datatype::traits::*;
 use raw::traits::*;
+<<<<<<< Updated upstream
 use request::{AsyncRequest, RecvRequest, Request, SendRequest};
+=======
+use request::{AsyncRequest, ReceiveRequest, Request, SendRequest};
+>>>>>>> Stashed changes
 use topology::{AnyProcess, CommunicatorRelation, Process, Rank};
 use topology::traits::*;
 
@@ -256,9 +260,15 @@ pub unsafe trait Source: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
+<<<<<<< Updated upstream
     fn immediate_receive_into_with_tag<'a, R>(&self, mut recvbuf: R, tag: Tag) -> RecvRequest<R>
     where
         R: BufferMut,
+=======
+    fn immediate_receive_into_with_tag<'a, R>(&self, mut recvbuf: R, tag: Tag) -> ReceiveRequest<R>
+    where
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -285,9 +295,15 @@ pub unsafe trait Source: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
+<<<<<<< Updated upstream
     fn immediate_receive_into<'a, R>(&self, recvbuf: R) -> RecvRequest<R>
     where
         R: BufferMut,
+=======
+    fn immediate_receive_into<R>(&self, recvbuf: R) -> ReceiveRequest<R>
+    where
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         self.immediate_receive_into_with_tag(recvbuf, unsafe_extern_static!(ffi::RSMPI_ANY_TAG))
     }
@@ -315,7 +331,12 @@ pub unsafe trait Source: AsCommunicator {
                 &mut req,
             );
             ReceiveFuture {
+<<<<<<< Updated upstream
                 req: Request::from_raw(req, val),
+=======
+                val,
+                req: Request::from_raw(req, ()),
+>>>>>>> Stashed changes
             }
         }
     }
@@ -631,7 +652,11 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
+<<<<<<< Updated upstream
         S: Buffer,
+=======
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -660,7 +685,11 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_send<S>(&self, sendbuf: S) -> SendRequest<S>
     where
+<<<<<<< Updated upstream
         S: Buffer,
+=======
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         self.immediate_send_with_tag(sendbuf, Tag::default())
     }
@@ -674,7 +703,11 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_buffered_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
+<<<<<<< Updated upstream
         S: Buffer,
+=======
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -698,9 +731,15 @@ pub trait Destination: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 3.7.2
+<<<<<<< Updated upstream
     fn immediate_buffered_send<S: Buffer>(&self, sendbuf: S) -> SendRequest<S>
     where
         S: Buffer,
+=======
+    fn immediate_buffered_send<S: ReadBuffer>(&self, sendbuf: S) -> SendRequest<S>
+    where
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         self.immediate_buffered_send_with_tag(sendbuf, Tag::default())
     }
@@ -714,7 +753,11 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_synchronous_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
+<<<<<<< Updated upstream
         S: Buffer,
+=======
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -740,7 +783,11 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_synchronous_send<S>(&self, sendbuf: S) -> SendRequest<S>
     where
+<<<<<<< Updated upstream
         S: Buffer,
+=======
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         self.immediate_synchronous_send_with_tag(sendbuf, Tag::default())
     }
@@ -754,7 +801,11 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_ready_send_with_tag<S>(&self, sendbuf: S, tag: Tag) -> SendRequest<S>
     where
+<<<<<<< Updated upstream
         S: Buffer,
+=======
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -784,7 +835,11 @@ pub trait Destination: AsCommunicator {
     /// 3.7.2
     fn immediate_ready_send<S>(&self, sendbuf: S) -> SendRequest<S>
     where
+<<<<<<< Updated upstream
         S: Buffer,
+=======
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         self.immediate_ready_send_with_tag(sendbuf, Tag::default())
     }
@@ -875,7 +930,11 @@ impl Message {
         (res, status)
     }
 
+<<<<<<< Updated upstream
     /// Receive a previously probed message into a `Buffer`.
+=======
+    /// Receive a previously probed message into a `WriteBuffer`.
+>>>>>>> Stashed changes
     ///
     /// Receive the message `&self` with contents matching `recvbuf`.
     ///
@@ -900,16 +959,26 @@ impl Message {
         Status(status)
     }
 
+<<<<<<< Updated upstream
     /// Asynchronously receive a previously probed message into a `Buffer`.
+=======
+    /// Asynchronously receive a previously probed message into a `WriteBuffer`.
+>>>>>>> Stashed changes
     ///
     /// Asynchronously receive the message `&self` with contents matching `recvbuf`.
     ///
     /// # Standard section(s)
     ///
     /// 3.8.3
+<<<<<<< Updated upstream
     pub fn immediate_matched_receive_into<R>(mut self, mut recvbuf: R) -> RecvRequest<R>
     where
         R: BufferMut,
+=======
+    pub fn immediate_matched_receive_into<'a, R>(mut self, mut recvbuf: R) -> ReceiveRequest<'a, R>
+    where
+        R: 'a + WriteBuffer,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -1177,7 +1246,12 @@ where
 /// Will contain a value of type `T` received via a non-blocking receive operation.
 #[must_use]
 pub struct ReceiveFuture<T> {
+<<<<<<< Updated upstream
     req: Request<Box<T>>,
+=======
+    val: Box<T>,
+    req: Request<()>,
+>>>>>>> Stashed changes
 }
 
 impl<T> ReceiveFuture<T>

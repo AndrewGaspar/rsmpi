@@ -29,6 +29,7 @@
 
 use std::cell::Cell;
 use std::mem::{forget, replace, uninitialized};
+use std::ops::{Deref, DerefMut};
 use std::ptr::drop_in_place;
 use std::marker::PhantomData;
 use std::slice;
@@ -62,11 +63,19 @@ pub mod traits {
 /// # Standard section(s)
 ///
 /// 3.7.1
+<<<<<<< Updated upstream
 pub trait AsyncRequest<Owned>: AsRaw<Raw = MPI_Request> + Sized {
     /// Unregister the request object from its scope and deconstruct it into its raw parts.
     ///
     /// This is unsafe because the request may outlive its associated buffers.
     unsafe fn into_raw(self) -> (MPI_Request, Owned);
+=======
+pub trait AsyncRequest<D>: AsRaw<Raw = MPI_Request> + Sized {
+    /// Unregister the request object from its scope and deconstruct it into its raw parts.
+    ///
+    /// This is unsafe because the request may outlive its associated buffers.
+    unsafe fn into_raw(self) -> (MPI_Request, D);
+>>>>>>> Stashed changes
 
     /// Wait for an operation to finish.
     ///
@@ -81,7 +90,8 @@ pub trait AsyncRequest<Owned>: AsRaw<Raw = MPI_Request> + Sized {
     /// 3.7.3
     fn wait(self) -> Status {
         let mut status: MPI_Status = unsafe { uninitialized() };
-        raw::wait(unsafe { &mut self.into_raw().0 }, Some(&mut status));
+        let mut raw = unsafe { self.into_raw() };
+        raw::wait(&mut raw.0, Some(&mut status));
         Status::from_raw(status)
     }
 
@@ -91,7 +101,11 @@ pub trait AsyncRequest<Owned>: AsRaw<Raw = MPI_Request> + Sized {
     /// # Standard section(s)
     ///
     /// 3.7.3
+<<<<<<< Updated upstream
     fn wait_data(self) -> (Owned, Status) {
+=======
+    fn wait_data(self) -> (D, Status) {
+>>>>>>> Stashed changes
         let (mut request, data) = unsafe { self.into_raw() };
 
         let mut status: MPI_Status = unsafe { uninitialized() };
@@ -108,7 +122,33 @@ pub trait AsyncRequest<Owned>: AsRaw<Raw = MPI_Request> + Sized {
     ///
     /// 3.7.3
     fn wait_without_status(self) {
-        raw::wait(unsafe { &mut self.into_raw().0 }, None)
+        let mut raw = unsafe { self.into_raw() };
+        raw::wait(&mut raw.0, None)
+    }
+
+    /// Wait for an operation to finish, but don’t bother retrieving the `Status` information.
+    ///
+    /// Will block execution of the calling thread until the associated operation has finished.
+    ///
+    /// # Standard section(s)
+    ///
+    /// 3.7.3
+    fn wait_data_without_status(self) -> D {
+        let (mut request, data) = unsafe { self.into_raw() };
+        raw::wait(&mut request, None);
+        data
+    }
+
+    /// Stops tracking the request's data buffers. The lifetime of the buffers must exceed the
+    /// lifetime of the attached scope.
+    fn forget_data<'a, Sc: Scope<'a>>(self, scope: Sc) -> Request<Sc>
+    where
+        D: 'a,
+    {
+        unsafe {
+            let (request, _) = self.into_raw();
+            Request::from_raw(request, scope)
+        }
     }
 
     /// Wait for an operation to finish, but don’t bother retrieving the `Status` information.
@@ -191,7 +231,14 @@ pub trait AsyncRequest<Owned>: AsRaw<Raw = MPI_Request> + Sized {
     }
 }
 
+<<<<<<< Updated upstream
 /// A request object for a non-blocking operation.
+=======
+/// A request object for a non-blocking operation registered with a Data buffer `D`.`
+///
+/// The `Scope` is needed to ensure that all buffers associated request will outlive the request
+/// itself, even if the destructor of the request fails to run.
+>>>>>>> Stashed changes
 ///
 /// # Panics
 ///
@@ -207,37 +254,70 @@ pub trait AsyncRequest<Owned>: AsRaw<Raw = MPI_Request> + Sized {
 /// 3.7.1
 #[must_use]
 #[derive(Debug)]
+<<<<<<< Updated upstream
 pub struct Request<Owned = ()> {
     request: MPI_Request,
     data: Owned,
+=======
+pub struct Request<D = ()> {
+    request: MPI_Request,
+    data: D,
+}
+
+/// Carries the data buffers for requests that both send and receive data.
+pub struct SendReceiveData<S, R> {
+    /// The buffer that was sent by the request
+    pub send: S,
+    /// The buffer receiving data for the request.
+    pub receive: R,
+>>>>>>> Stashed changes
 }
 
 /// A `SendRequest` is a request that is sending data. It maintains either a const borrow or
 /// ownership of the buffer being sent.
+<<<<<<< Updated upstream
 pub type SendRequest<S> = Request<S>;
+=======
+pub type SendRequest<'a, S> = Request<S>;
+>>>>>>> Stashed changes
 
-/// A `RecvRequest` is a request that is receiving data. It maintains either a mutable borrow or
+/// A `ReceiveRequest` is a request that is receiving data. It maintains either a mutable borrow or
 /// ownership of the buffer receiving the data.
+<<<<<<< Updated upstream
 pub type RecvRequest<R> = Request<R>;
+=======
+pub type ReceiveRequest<'a, R> = Request<R>;
+>>>>>>> Stashed changes
 
-/// A `SendRecvRequest` is a request that is sending and receiving data. It maintains a const
+/// A `SendReceiveRequest` is a request that is sending and receiving data. It maintains a const
 /// borrow or ownership of the buffer being sent, and a mutable borrow or ownership of the buffer
 /// receiving the data.
+<<<<<<< Updated upstream
 pub type SendRecvRequest<S, R> = Request<(S, R)>;
 
 unsafe impl<Owned> AsRaw for Request<Owned> {
+=======
+pub type SendReceiveRequest<'a, S, R> = Request<SendReceiveData<S, R>>;
+
+unsafe impl<D> AsRaw for Request<D> {
+>>>>>>> Stashed changes
     type Raw = MPI_Request;
     fn as_raw(&self) -> Self::Raw {
         self.request
     }
 }
 
+<<<<<<< Updated upstream
 impl<Owned> Drop for Request<Owned> {
+=======
+impl<D> Drop for Request<D> {
+>>>>>>> Stashed changes
     fn drop(&mut self) {
         panic!("request was dropped without being completed");
     }
 }
 
+<<<<<<< Updated upstream
 impl<Owned> Request<Owned> {
     /// Stops tracking the request's data buffers. The lifetime of the buffers must exceed the
     /// lifetime of the attached scope.
@@ -273,6 +353,28 @@ impl<Owned> AsyncRequest<Owned> for Request<Owned> {
     ///
     /// This is unsafe because the request may outlive its associated buffers.
     unsafe fn into_raw(mut self) -> (MPI_Request, Owned) {
+=======
+impl<D> Request<D> {
+    /// Construct a request object from the raw MPI type.
+    ///
+    /// # Requirements
+    ///
+    /// - The request is a valid, active request.  It must not be `MPI_REQUEST_NULL`.
+    /// - The request must not be persistent.
+    /// - All buffers associated with the request must outlive `'a`.
+    /// - The request must not be registered with the given scope.
+    ///
+    pub unsafe fn from_raw(request: MPI_Request, data: D) -> Self {
+        debug_assert!(!request.is_handle_null());
+        Self { request, data }
+    }
+}
+
+impl<D> Request<D> {}
+
+impl<D> AsyncRequest<D> for Request<D> {
+    unsafe fn into_raw(mut self) -> (MPI_Request, D) {
+>>>>>>> Stashed changes
         let request = replace(&mut self.request, uninitialized());
         let data = replace(&mut self.data, uninitialized());
         forget(self);
@@ -281,6 +383,7 @@ impl<Owned> AsyncRequest<Owned> for Request<Owned> {
 }
 
 /// Collects an iterator of `Request` objects into a `RequestCollection` object
+<<<<<<< Updated upstream
 pub trait CollectRequests<Owned>: IntoIterator<Item = Request<Owned>> {
     /// Consumes and converts an iterator of `Requst` objects into a `RequestCollection` object.
     fn collect_requests(self) -> RequestCollection<Owned>;
@@ -291,32 +394,60 @@ where
     T: IntoIterator<Item = Request<Owned>>,
 {
     fn collect_requests(self) -> RequestCollection<Owned> {
+=======
+pub trait CollectRequests<D>: IntoIterator<Item = Request<D>> {
+    /// Consumes and converts an iterator of `Requst` objects into a `RequestCollection` object.
+    fn collect_requests(self) -> RequestCollection<D>;
+}
+
+impl<D, T> CollectRequests<D> for T
+where
+    T: IntoIterator<Item = Request<D>>,
+{
+    fn collect_requests(self) -> RequestCollection<D> {
+>>>>>>> Stashed changes
         RequestCollection::from_request_iter(self)
     }
 }
 
 /// Result type for `RequestCollection::test_any`.
 #[derive(Clone, Copy)]
+<<<<<<< Updated upstream
 pub enum TestAny<Owned> {
+=======
+pub enum TestAny<D> {
+>>>>>>> Stashed changes
     /// Indicates that there are no active requests in the `requests` slice.
     NoneActive,
     /// Indicates that, while there are active requests in the `requests` slice, none of them were
     /// completed.
     NoneComplete,
     /// Indicates which request in the `requests` slice was completed.
+<<<<<<< Updated upstream
     Completed(i32, Owned, Status),
+=======
+    Completed(i32, D, Status),
+>>>>>>> Stashed changes
 }
 
 /// Result type for `RequestCollection::test_any_without_status`.
 #[derive(Clone, Copy)]
+<<<<<<< Updated upstream
 pub enum TestAnyWithoutStatus<Owned> {
+=======
+pub enum TestAnyWithoutStatus<D> {
+>>>>>>> Stashed changes
     /// Indicates that there are no active requests in the `requests` slice.
     NoneActive,
     /// Indicates that, while there are active requests in the `requests` slice, none of them were
     /// completed.
     NoneComplete,
     /// Indicates which request in the `requests` slice was completed.
+<<<<<<< Updated upstream
     Completed(i32, Owned),
+=======
+    Completed(i32, D),
+>>>>>>> Stashed changes
 }
 
 /// A collection of request objects for a non-blocking operation registered with a `Scope` of
@@ -340,7 +471,11 @@ pub enum TestAnyWithoutStatus<Owned> {
 /// 3.7.5
 #[must_use]
 #[derive(Debug)]
+<<<<<<< Updated upstream
 pub struct RequestCollection<Owned> {
+=======
+pub struct RequestCollection<D> {
+>>>>>>> Stashed changes
     /// Tracks the number of request handles in `requests` are active.
     outstanding: usize,
 
@@ -348,6 +483,7 @@ pub struct RequestCollection<Owned> {
     /// could become essentially `Vec<Option<MPI_Request>>`.
     requests: Vec<MPI_Request>,
 
+<<<<<<< Updated upstream
     /// `data[i]` contains the owned objects and buffers associated with `requests[i]`
     ///
     /// `data` is not used like a typical Vec - so as to not impose `Default` requirements
@@ -360,6 +496,20 @@ pub struct RequestCollection<Owned> {
 }
 
 impl<Owned> Drop for RequestCollection<Owned> {
+=======
+    /// `data[i]` contains the buffers associated with `requests[i]`
+    ///
+    /// `data` is not used like a typical Vec - so as to not impose `Default` requirements
+    /// on `D` and not have to wrap `D` in `Option`, we manage the uninitialized memory in
+    /// accordance with the active state of the associated request. This also allows no memory to be
+    /// allocated for `data` when `D = ()`.
+    ///
+    /// Therefore, `data.len()` will always be `0`.
+    data: Vec<D>,
+}
+
+impl<D> Drop for RequestCollection<D> {
+>>>>>>> Stashed changes
     fn drop(&mut self) {
         if self.outstanding != 0 {
             panic!("RequestCollection was dropped with outstanding requests not completed.");
@@ -367,10 +517,17 @@ impl<Owned> Drop for RequestCollection<Owned> {
     }
 }
 
+<<<<<<< Updated upstream
 impl<Owned> RequestCollection<Owned> {
     /// Constructs a `RequestCollection` from a Vec of `MPI_Request` handles and a scope object.
     /// `requests` are allowed to be null, but they must not be persistent requests.
     pub fn from_raw(requests: Vec<MPI_Request>, mut data: Vec<Owned>) -> Self {
+=======
+impl<D> RequestCollection<D> {
+    /// Constructs a `RequestCollection` from a Vec of `MPI_Request` handles and a scope object.
+    /// `requests` are allowed to be null, but they must not be persistent requests.
+    pub fn from_raw(requests: Vec<MPI_Request>, mut data: Vec<D>) -> Self {
+>>>>>>> Stashed changes
         assert_eq!(
             requests.len(),
             data.len(),
@@ -386,10 +543,17 @@ impl<Owned> RequestCollection<Owned> {
         unsafe {
             data.set_len(0);
 
+<<<<<<< Updated upstream
             // explicitly drop the data for the null request handles
             for i in 0..requests.len() {
                 if requests[i].is_handle_null() {
                     drop_in_place(data.get_unchecked_mut(i));
+=======
+            // explicitly drop the data and recv_data for the null request handles
+            for i in 0..requests.len() {
+                if requests[i].is_handle_null() {
+                    drop_in_place(&mut data[i]);
+>>>>>>> Stashed changes
                 }
             }
         }
@@ -419,7 +583,11 @@ impl<Owned> RequestCollection<Owned> {
     /// must be larger than or equal of the new `RequestCollection`.
     fn from_request_iter<T>(iter: T) -> Self
     where
+<<<<<<< Updated upstream
         T: IntoIterator<Item = Request<Owned>>,
+=======
+        T: IntoIterator<Item = Request<D>>,
+>>>>>>> Stashed changes
     {
         let iter = iter.into_iter();
 
@@ -437,7 +605,11 @@ impl<Owned> RequestCollection<Owned> {
     /// Pushes a new request into the collection. The request is removed from its previous scope and
     /// attached to the new scope. Therefore, the request's scope must be greater than or equal to
     /// the collection's scope.
+<<<<<<< Updated upstream
     pub fn push(&mut self, request: Request<Owned>) {
+=======
+    pub fn push(&mut self, request: Request<D>) {
+>>>>>>> Stashed changes
         unsafe {
             let (request, data) = request.into_raw();
             assert!(
@@ -516,7 +688,11 @@ impl<Owned> RequestCollection<Owned> {
 
     /// Called after a request is completed to retrieve the `data` associated with the completed
     /// request.
+<<<<<<< Updated upstream
     unsafe fn complete_request(&mut self, idx: i32) -> Owned {
+=======
+    unsafe fn complete_request(&mut self, idx: i32) -> D {
+>>>>>>> Stashed changes
         self.check_null(idx);
 
         replace(
@@ -540,11 +716,15 @@ impl<Owned> RequestCollection<Owned> {
 
     /// Called after a `wait_some` or `test_some` operation to retrieve the data associated with
     /// each completed request.
+<<<<<<< Updated upstream
     unsafe fn complete_some_requests(
         &mut self,
         indices: &[i32],
         mut data: Option<&mut Vec<Owned>>,
     ) {
+=======
+    unsafe fn complete_some_requests(&mut self, indices: &[i32], mut data: Option<&mut Vec<D>>) {
+>>>>>>> Stashed changes
         self.check_some_null(indices);
 
         for &idx in indices {
@@ -575,7 +755,11 @@ impl<Owned> RequestCollection<Owned> {
     unsafe fn complete_all_requests(
         &mut self,
         indices: Option<Vec<i32>>,
+<<<<<<< Updated upstream
         mut data: Option<&mut Vec<Owned>>,
+=======
+        mut data: Option<&mut Vec<D>>,
+>>>>>>> Stashed changes
     ) {
         if let Some(ref indices) = indices {
             self.complete_some_requests(&indices[..], data);
@@ -605,7 +789,11 @@ impl<Owned> RequestCollection<Owned> {
 
     /// Returns the underlying array of MPI_Request objects and their attached
     /// scope.
+<<<<<<< Updated upstream
     pub unsafe fn into_raw(mut self) -> (Vec<MPI_Request>, Vec<Owned>) {
+=======
+    pub unsafe fn into_raw(mut self) -> (Vec<MPI_Request>, Vec<D>) {
+>>>>>>> Stashed changes
         let requests = replace(&mut self.requests, uninitialized());
         let data = replace(&mut self.data, uninitialized());
         forget(self);
@@ -633,7 +821,11 @@ impl<Owned> RequestCollection<Owned> {
     /// # Standard section(s)
     ///
     /// 3.7.5
+<<<<<<< Updated upstream
     pub fn wait_any(&mut self) -> Option<(i32, Owned, Status)> {
+=======
+    pub fn wait_any(&mut self) -> Option<(i32, D, Status)> {
+>>>>>>> Stashed changes
         let mut status: MPI_Status = unsafe { uninitialized() };
         if let Some(idx) = raw::wait_any(&mut self.requests, Some(&mut status)) {
             let data = unsafe { self.complete_request(idx) };
@@ -658,7 +850,11 @@ impl<Owned> RequestCollection<Owned> {
     /// # Standard section(s)
     ///
     /// 3.7.5
+<<<<<<< Updated upstream
     pub fn wait_any_without_status(&mut self) -> Option<(i32, Owned)> {
+=======
+    pub fn wait_any_without_status(&mut self) -> Option<(i32, D)> {
+>>>>>>> Stashed changes
         if let Some(idx) = raw::wait_any(&mut self.requests, None) {
             let data = unsafe { self.complete_request(idx) };
             self.decrease_outstanding(1);
@@ -684,7 +880,11 @@ impl<Owned> RequestCollection<Owned> {
     /// # Standard section(s)
     ///
     /// 3.7.5
+<<<<<<< Updated upstream
     pub fn test_any(&mut self) -> TestAny<Owned> {
+=======
+    pub fn test_any(&mut self) -> TestAny<D> {
+>>>>>>> Stashed changes
         let mut status: MPI_Status = unsafe { uninitialized() };
         let result = match raw::test_any(&mut self.requests, Some(&mut status)) {
             raw::TestAny::NoneActive => TestAny::NoneActive,
@@ -715,7 +915,11 @@ impl<Owned> RequestCollection<Owned> {
     /// # Standard section(s)
     ///
     /// 3.7.5
+<<<<<<< Updated upstream
     pub fn test_any_without_status(&mut self) -> TestAnyWithoutStatus<Owned> {
+=======
+    pub fn test_any_without_status(&mut self) -> TestAnyWithoutStatus<D> {
+>>>>>>> Stashed changes
         let result = match raw::test_any(&mut self.requests, None) {
             raw::TestAny::NoneActive => TestAnyWithoutStatus::NoneActive,
             raw::TestAny::NoneComplete => TestAnyWithoutStatus::NoneComplete,
@@ -1107,34 +1311,58 @@ impl<Owned> RequestCollection<Owned> {
 ///
 /// See `examples/immediate.rs`
 #[derive(Debug)]
+<<<<<<< Updated upstream
 pub struct WaitGuard<Owned>(Option<Request<Owned>>);
 
 impl<Owned> Drop for WaitGuard<Owned> {
+=======
+pub struct WaitGuard<D>(Option<Request<D>>);
+
+impl<D> Drop for WaitGuard<D> {
+>>>>>>> Stashed changes
     fn drop(&mut self) {
         self.0.take().expect("invalid WaitGuard").wait();
     }
 }
 
+<<<<<<< Updated upstream
 unsafe impl<Owned> AsRaw for WaitGuard<Owned> {
+=======
+unsafe impl<D> AsRaw for WaitGuard<D> {
+>>>>>>> Stashed changes
     type Raw = MPI_Request;
     fn as_raw(&self) -> Self::Raw {
         self.0.as_ref().expect("invalid WaitGuard").as_raw()
     }
 }
 
+<<<<<<< Updated upstream
 impl<Owned> From<WaitGuard<Owned>> for Request<Owned> {
     fn from(mut guard: WaitGuard<Owned>) -> Self {
+=======
+impl<D> From<WaitGuard<D>> for Request<D> {
+    fn from(mut guard: WaitGuard<D>) -> Self {
+>>>>>>> Stashed changes
         guard.0.take().expect("invalid WaitGuard")
     }
 }
 
+<<<<<<< Updated upstream
 impl<Owned> From<Request<Owned>> for WaitGuard<Owned> {
     fn from(req: Request<Owned>) -> Self {
+=======
+impl<D> From<Request<D>> for WaitGuard<D> {
+    fn from(req: Request<D>) -> Self {
+>>>>>>> Stashed changes
         WaitGuard(Some(req))
     }
 }
 
+<<<<<<< Updated upstream
 impl<Owned> WaitGuard<Owned> {
+=======
+impl<D> WaitGuard<D> {
+>>>>>>> Stashed changes
     fn cancel(&self) {
         if let Some(ref req) = self.0 {
             req.cancel();
@@ -1151,16 +1379,27 @@ impl<Owned> WaitGuard<Owned> {
 ///
 /// See `examples/immediate.rs`
 #[derive(Debug)]
+<<<<<<< Updated upstream
 pub struct CancelGuard<Owned>(WaitGuard<Owned>);
 
 impl<Owned> Drop for CancelGuard<Owned> {
+=======
+pub struct CancelGuard<D>(WaitGuard<D>);
+
+impl<D> Drop for CancelGuard<D> {
+>>>>>>> Stashed changes
     fn drop(&mut self) {
         self.0.cancel();
     }
 }
 
+<<<<<<< Updated upstream
 impl<Owned> From<CancelGuard<Owned>> for WaitGuard<Owned> {
     fn from(mut guard: CancelGuard<Owned>) -> Self {
+=======
+impl<D> From<CancelGuard<D>> for WaitGuard<D> {
+    fn from(mut guard: CancelGuard<D>) -> Self {
+>>>>>>> Stashed changes
         unsafe {
             let inner = replace(&mut guard.0, uninitialized());
             forget(guard);
@@ -1169,14 +1408,24 @@ impl<Owned> From<CancelGuard<Owned>> for WaitGuard<Owned> {
     }
 }
 
+<<<<<<< Updated upstream
 impl<Owned> From<WaitGuard<Owned>> for CancelGuard<Owned> {
     fn from(guard: WaitGuard<Owned>) -> Self {
+=======
+impl<D> From<WaitGuard<D>> for CancelGuard<D> {
+    fn from(guard: WaitGuard<D>) -> Self {
+>>>>>>> Stashed changes
         CancelGuard(guard)
     }
 }
 
+<<<<<<< Updated upstream
 impl<Owned> From<Request<Owned>> for CancelGuard<Owned> {
     fn from(req: Request<Owned>) -> Self {
+=======
+impl<D> From<Request<D>> for CancelGuard<D> {
+    fn from(req: Request<D>) -> Self {
+>>>>>>> Stashed changes
         CancelGuard(WaitGuard::from(req))
     }
 }
@@ -1185,7 +1434,11 @@ impl<Owned> From<Request<Owned>> for CancelGuard<Owned> {
 /// [`StaticScope`](struct.StaticScope.html) used internally by the `request` module.
 ///
 /// This trait is an implementation detail.  You shouldn’t have to use or implement this trait.
+<<<<<<< Updated upstream
 pub unsafe trait Scope<'a>: Clone {
+=======
+pub unsafe trait Scope<'a>: Copy {
+>>>>>>> Stashed changes
     /// Registers a request with the scope.
     fn register(&self);
 
@@ -1196,8 +1449,48 @@ pub unsafe trait Scope<'a>: Clone {
         ScopedBuffer::new(buf, self.clone())
     }
 
+<<<<<<< Updated upstream
     fn attach_mut<Buf: 'a + BufferMut>(&self, buf: Buf) -> ScopedBufferMut<'a, Buf, Self> {
         ScopedBufferMut::new(buf, self.clone())
+=======
+    /// Unregisters multiple requests from the scope.
+    unsafe fn unregister_many(&self, count: usize);
+
+    fn attach_scope<'b, B: 'b>(&self, buffer: B) -> Scoped<'a, B, Self>
+    where 'b: 'a {
+        self.register();
+
+        Scoped {
+            buffer,
+            scope: *self,
+            phantom: PhantomData,
+        }
+    }
+}
+
+pub struct Scoped<'a, B: 'a, Sc: Scope<'a>> {
+    buffer: B,
+    scope: Sc,
+    phantom: PhantomData<Cell<&'a ()>>,
+}
+
+impl<'a, B: 'a, Sc: Scope<'a>> Drop for Scoped<'a, B, Sc> {
+    fn drop(&mut self) {
+        unsafe { self.scope.unregister() };
+    }
+}
+
+impl<'a, B: 'a, Sc: Scope<'a>> Deref for Scoped<'a, B, Sc> {
+    type Target = B;
+    fn deref(&self) -> &Self::Target {
+        &self.buffer
+    }
+}
+
+impl<'a, B: 'a, Sc: Scope<'a>> DerefMut for Scoped<'a, B, Sc> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.buffer
+>>>>>>> Stashed changes
     }
 }
 

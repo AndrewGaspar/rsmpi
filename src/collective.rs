@@ -22,7 +22,11 @@ use ffi::{MPI_Op, MPI_Request};
 use datatype::{DatatypeRef, DynBuffer, DynBufferMut};
 use datatype::traits::*;
 use raw::traits::*;
+<<<<<<< Updated upstream
 use request::{RecvRequest, Request, SendRecvRequest, SendRequest};
+=======
+use request::{ReceiveRequest, Request, SendReceiveData, SendReceiveRequest, SendRequest};
+>>>>>>> Stashed changes
 use topology::traits::*;
 use topology::{Process, Rank};
 
@@ -304,7 +308,11 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.1
+<<<<<<< Updated upstream
     fn immediate_barrier(&self) -> Request {
+=======
+    fn immediate_barrier(&self) -> Request<()> {
+>>>>>>> Stashed changes
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Ibarrier(self.as_raw(), &mut request);
@@ -322,10 +330,21 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.5
+<<<<<<< Updated upstream
     fn immediate_all_gather_into<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
         S: Buffer,
         R: BufferMut,
+=======
+    fn immediate_all_gather_into<'a, S, R>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+    ) -> SendReceiveRequest<'a, S, R>
+    where
+        S: ReadBuffer,
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -340,7 +359,17 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -354,11 +383,19 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.5
+<<<<<<< Updated upstream
     fn immediate_all_gather_varcount_into<S, R>(
         &self,
         sendbuf: S,
         mut recvbuf: R,
     ) -> SendRecvRequest<S, R>
+=======
+    fn immediate_all_gather_varcount_into<'a, S, R>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+    ) -> SendReceiveRequest<'a, S, R>
+>>>>>>> Stashed changes
     where
         S: Buffer,
         R: PartitionedBufferMut,
@@ -376,7 +413,17 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -389,10 +436,21 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.6
+<<<<<<< Updated upstream
     fn immediate_all_to_all_into<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
         S: Buffer,
         R: BufferMut,
+=======
+    fn immediate_all_to_all_into<'a, S, R>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+    ) -> SendReceiveRequest<'a, S, R>
+    where
+        S: ReadBuffer,
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         let c_size = self.size();
@@ -407,7 +465,17 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -416,11 +484,19 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.6
+<<<<<<< Updated upstream
     fn immediate_all_to_all_varcount_into<S, R>(
         &self,
         sendbuf: S,
         mut recvbuf: R,
     ) -> SendRecvRequest<S, R>
+=======
+    fn immediate_all_to_all_varcount_into<'a, S, R>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+    ) -> SendReceiveRequest<'a, S, R>
+>>>>>>> Stashed changes
     where
         S: PartitionedBuffer,
         R: PartitionedBufferMut,
@@ -439,7 +515,17 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -453,6 +539,7 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.8
+<<<<<<< Updated upstream
     fn immediate_all_reduce_into<S, R, Op>(
         &self,
         sendbuf: S,
@@ -463,6 +550,18 @@ pub trait CommunicatorCollectives: Communicator {
         S: Buffer,
         R: BufferMut,
         Op: Operation,
+=======
+    fn immediate_all_reduce_into<'a, S, R, O>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+        op: O,
+    ) -> SendReceiveRequest<'a, S, R>
+    where
+        S: ReadBuffer,
+        R: WriteBuffer,
+        O: 'a + Operation,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -475,7 +574,17 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf, op))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -490,6 +599,7 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.9
+<<<<<<< Updated upstream
     fn immediate_reduce_scatter_block_into<S, R, Op>(
         &self,
         sendbuf: S,
@@ -500,6 +610,18 @@ pub trait CommunicatorCollectives: Communicator {
         S: Buffer,
         R: BufferMut,
         Op: Operation,
+=======
+    fn immediate_reduce_scatter_block_into<'a, S, R, O>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+        op: O,
+    ) -> SendReceiveRequest<'a, S, R>
+    where
+        S: ReadBuffer,
+        R: WriteBuffer,
+        O: 'a + Operation,
+>>>>>>> Stashed changes
     {
         assert_eq!(recvbuf.count() * self.size(), sendbuf.count());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -513,7 +635,17 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf, op))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -527,6 +659,7 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.11
+<<<<<<< Updated upstream
     fn immediate_scan_into<S, R, Op>(
         &self,
         sendbuf: S,
@@ -537,6 +670,18 @@ pub trait CommunicatorCollectives: Communicator {
         S: Buffer,
         R: BufferMut,
         Op: Operation,
+=======
+    fn immediate_scan_into<'a, S, R, O>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+        op: O,
+    ) -> SendReceiveRequest<'a, S, R>
+    where
+        S: ReadBuffer,
+        R: WriteBuffer,
+        O: 'a + Operation,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -549,7 +694,17 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf, op))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -563,6 +718,7 @@ pub trait CommunicatorCollectives: Communicator {
     /// # Standard section(s)
     ///
     /// 5.12.12
+<<<<<<< Updated upstream
     fn immediate_exclusive_scan_into<S, R, Op>(
         &self,
         sendbuf: S,
@@ -573,6 +729,18 @@ pub trait CommunicatorCollectives: Communicator {
         S: Buffer,
         R: BufferMut,
         Op: Operation,
+=======
+    fn immediate_exclusive_scan_into<'a, S, R, O>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+        op: O,
+    ) -> SendReceiveRequest<'a, S, R>
+    where
+        S: ReadBuffer,
+        R: WriteBuffer,
+        O: 'a + Operation,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -585,7 +753,17 @@ pub trait CommunicatorCollectives: Communicator {
                 self.as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf, op))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 }
@@ -997,9 +1175,15 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.2
+<<<<<<< Updated upstream
     fn immediate_broadcast_into<R>(&self, mut recvbuf: R) -> RecvRequest<R>
     where
         R: BufferMut,
+=======
+    fn immediate_broadcast_into<'a, R>(&self, mut recvbuf: R) -> ReceiveRequest<'a, R>
+    where
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
         unsafe {
@@ -1026,9 +1210,15 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
+<<<<<<< Updated upstream
     fn immediate_gather_into<S>(&self, sendbuf: S) -> SendRequest<S>
     where
         S: Buffer,
+=======
+    fn immediate_gather_into<'a, S>(&self, sendbuf: S) -> SendRequest<'a, S>
+    where
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1059,10 +1249,21 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
+<<<<<<< Updated upstream
     fn immediate_gather_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
         S: Buffer,
         R: BufferMut,
+=======
+    fn immediate_gather_into_root<'a, S, R>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+    ) -> SendReceiveRequest<'a, S, R>
+    where
+        S: ReadBuffer,
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1079,7 +1280,17 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -1094,9 +1305,15 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
+<<<<<<< Updated upstream
     fn immediate_gather_varcount_into<S>(&self, sendbuf: S) -> SendRequest<S>
     where
         S: Buffer,
+=======
+    fn immediate_gather_varcount_into<'a, S>(&self, sendbuf: S) -> SendRequest<'a, S>
+    where
+        S: ReadBuffer,
+>>>>>>> Stashed changes
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1128,11 +1345,19 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.3
+<<<<<<< Updated upstream
     fn immediate_gather_varcount_into_root<S, R>(
         &self,
         sendbuf: S,
         mut recvbuf: R,
     ) -> SendRecvRequest<S, R>
+=======
+    fn immediate_gather_varcount_into_root<'a, S, R>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+    ) -> SendReceiveRequest<'a, S, R>
+>>>>>>> Stashed changes
     where
         S: Buffer,
         R: PartitionedBufferMut,
@@ -1152,7 +1377,17 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -1167,9 +1402,15 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
+<<<<<<< Updated upstream
     fn immediate_scatter_into<R>(&self, mut recvbuf: R) -> RecvRequest<R>
     where
         R: BufferMut,
+=======
+    fn immediate_scatter_into<'a, R>(&self, mut recvbuf: R) -> ReceiveRequest<'a, R>
+    where
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1200,10 +1441,21 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
+<<<<<<< Updated upstream
     fn immediate_scatter_into_root<S, R>(&self, sendbuf: S, mut recvbuf: R) -> SendRecvRequest<S, R>
     where
         S: Buffer,
         R: BufferMut,
+=======
+    fn immediate_scatter_into_root<'a, S, R>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+    ) -> SendReceiveRequest<'a, S, R>
+    where
+        S: ReadBuffer,
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1220,7 +1472,17 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 
@@ -1235,9 +1497,15 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
+<<<<<<< Updated upstream
     fn immediate_scatter_varcount_into<R>(&self, mut recvbuf: R) -> RecvRequest<R>
     where
         R: BufferMut,
+=======
+    fn immediate_scatter_varcount_into<'a, R>(&self, mut recvbuf: R) -> ReceiveRequest<'a, R>
+    where
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1269,6 +1537,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.4
+<<<<<<< Updated upstream
     fn immediate_scatter_varcount_into_root<S, R>(
         &self,
         sendbuf: S,
@@ -1277,6 +1546,16 @@ pub trait Root: AsCommunicator {
     where
         S: PartitionedBuffer,
         R: BufferMut,
+=======
+    fn immediate_scatter_varcount_into_root<'a, S, R>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+    ) -> ReceiveRequest<'a, R>
+    where
+        S: PartitionedBuffer,
+        R: WriteBuffer,
+>>>>>>> Stashed changes
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1293,7 +1572,11 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf))
+=======
+            Request::from_raw(request, recvbuf)
+>>>>>>> Stashed changes
         }
     }
 
@@ -1309,10 +1592,17 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.7
+<<<<<<< Updated upstream
     fn immediate_reduce_into<S, Op>(&self, sendbuf: S, op: Op) -> Request<(S, Op)>
     where
         S: Buffer,
         Op: Operation,
+=======
+    fn immediate_reduce_into<'a, S, O>(&self, sendbuf: S, op: O) -> SendRequest<'a, S>
+    where
+        S: ReadBuffer,
+        O: 'a + Operation,
+>>>>>>> Stashed changes
     {
         assert_ne!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1327,7 +1617,11 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, op))
+=======
+            Request::from_raw(request, sendbuf)
+>>>>>>> Stashed changes
         }
     }
 
@@ -1343,6 +1637,7 @@ pub trait Root: AsCommunicator {
     /// # Standard section(s)
     ///
     /// 5.12.7
+<<<<<<< Updated upstream
     fn immediate_reduce_into_root<S, R, Op>(
         &self,
         sendbuf: S,
@@ -1353,6 +1648,18 @@ pub trait Root: AsCommunicator {
         S: Buffer,
         R: BufferMut,
         Op: Operation,
+=======
+    fn immediate_reduce_into_root<'a, S, R, O>(
+        &self,
+        sendbuf: S,
+        mut recvbuf: R,
+        op: O,
+    ) -> SendReceiveRequest<'a, S, R>
+    where
+        S: ReadBuffer,
+        R: WriteBuffer,
+        O: 'a + Operation,
+>>>>>>> Stashed changes
     {
         assert_eq!(self.as_communicator().rank(), self.root_rank());
         let mut request: MPI_Request = unsafe { mem::uninitialized() };
@@ -1367,7 +1674,17 @@ pub trait Root: AsCommunicator {
                 self.as_communicator().as_raw(),
                 &mut request,
             );
+<<<<<<< Updated upstream
             Request::from_raw(request, (sendbuf, recvbuf, op))
+=======
+            Request::from_raw(
+                request,
+                SendReceiveData {
+                    send: sendbuf,
+                    receive: recvbuf,
+                },
+            )
+>>>>>>> Stashed changes
         }
     }
 }

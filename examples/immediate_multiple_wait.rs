@@ -20,11 +20,19 @@ fn main() {
     // The ranks will be received into this Vec<usize>
     let mut ranks = vec![0usize; num_targets];
 
-    {
+    mpi::request::scope(|scope| {
         // Creates, initiates, and collects send requests into a RequestCollection.
         let mut send_requests = (0..num_targets)
             .map(|r| r * 2 + lbound)
+<<<<<<< Updated upstream
             .map(|target| world.process_at_rank(target as i32).immediate_send(&rank))
+=======
+            .map(|target| {
+                world
+                    .process_at_rank(target as i32)
+                    .immediate_send(scope.attach_buffer(&rank))
+            })
+>>>>>>> Stashed changes
             .collect_requests();
 
         // Creates, initiates, and collects receive requests into a RequestCollection.
@@ -34,7 +42,11 @@ fn main() {
             .map(|(target, rank)| {
                 world
                     .process_at_rank(target as i32)
+<<<<<<< Updated upstream
                     .immediate_receive_into(rank)
+=======
+                    .immediate_receive_into(scope.attach_buffer(rank))
+>>>>>>> Stashed changes
             })
             .collect_requests();
 
@@ -62,7 +74,7 @@ fn main() {
         );
 
         send_requests.wait_all_without_status();
-    }
+    });
 
     let expected: Vec<_> = (0..num_targets).map(|rank| rank * 2 + lbound).collect();
     assert_eq!(expected, ranks, "Did not receive the expected ranks.");
