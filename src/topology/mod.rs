@@ -23,9 +23,12 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::{mem, process};
 
+use conv::ConvUtil;
+
 use super::Count;
 #[cfg(not(msmpi))]
 use super::Tag;
+
 use datatype::traits::*;
 use ffi;
 use ffi::{MPI_Comm, MPI_Group};
@@ -138,8 +141,8 @@ pub struct UserCommunicator(MPI_Comm);
 
 impl UserCommunicator {
     /// If the raw value is the null handle returns `None`
-    fn from_raw(raw: MPI_Comm) -> Option<UserCommunicator> {
-        if raw == unsafe_extern_static!(ffi::RSMPI_COMM_NULL) {
+    pub unsafe fn from_raw(raw: MPI_Comm) -> Option<UserCommunicator> {
+        if raw == ffi::RSMPI_COMM_NULL {
             None
         } else {
             Some(UserCommunicator(raw))
@@ -385,8 +388,8 @@ pub trait Communicator: AsRaw<Raw = MPI_Comm> {
         let mut newcomm: MPI_Comm = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Comm_split(self.as_raw(), color.as_raw(), key, &mut newcomm);
+            UserCommunicator::from_raw(newcomm)
         }
-        UserCommunicator::from_raw(newcomm)
     }
 
     /// Split a communicator collectively by subgroup.
@@ -414,8 +417,8 @@ pub trait Communicator: AsRaw<Raw = MPI_Comm> {
         let mut newcomm: MPI_Comm = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Comm_create(self.as_raw(), group.as_raw(), &mut newcomm);
+            UserCommunicator::from_raw(newcomm)
         }
-        UserCommunicator::from_raw(newcomm)
     }
 
     /// Split a communicator by subgroup.
@@ -453,8 +456,8 @@ pub trait Communicator: AsRaw<Raw = MPI_Comm> {
         let mut newcomm: MPI_Comm = unsafe { mem::uninitialized() };
         unsafe {
             ffi::MPI_Comm_create_group(self.as_raw(), group.as_raw(), tag, &mut newcomm);
+            UserCommunicator::from_raw(newcomm)
         }
-        UserCommunicator::from_raw(newcomm)
     }
 
     /// The group associated with this communicator
@@ -543,6 +546,106 @@ pub trait Communicator: AsRaw<Raw = MPI_Comm> {
             );
             CartesianCommunicator::from_raw(comm_cart)
         }
+    }
+
+    /// Gets the implementation-defined buffer size required to pack 'incount' elements of type
+    /// 'datatype'.
+    ///
+    /// # Standard section(s)
+    ///
+    /// 4.2, see MPI_Pack_size
+    fn pack_size<Dt>(&self, incount: Count, datatype: &Dt) -> Count
+    where
+        Dt: Datatype,
+    {
+        unsafe {
+            let mut size = mem::uninitialized();
+            ffi::MPI_Pack_size(incount, datatype.as_raw(), self.as_raw(), &mut size);
+            size
+        }
+    }
+
+    /// Packs inbuf into a byte array with an implementation-defined format. Often paired with
+    /// `unpack` to convert back into a specific datatype.
+    ///
+    /// # Standard Sections
+    ///
+    /// 4.2, see MPI_Pack
+    fn pack<Buf>(&self, inbuf: &Buf) -> Vec<u8>
+    where
+        Buf: ?Sized + Buffer,
+    {
+        let inbuf_dt = inbuf.as_datatype();
+
+        let mut outbuf = vec![
+            0;
+            self.pack_size(inbuf.count(), &inbuf_dt)
+                .value_as::<usize>()
+                .expect("MPI_Pack_size returned a negative buffer size!")
+        ];
+
+        let position = self.pack_into(inbuf, &mut outbuf[..], 0);
+
+        outbuf.resize(
+            position
+                .value_as()
+                .expect("MPI_Pack returned a negative position!"),
+            0,
+        );
+
+        outbuf
+    }
+
+    /// Packs inbuf into a byte array with an implementation-defined format. Often paired with
+    /// `unpack` to convert back into a specific datatype.
+    ///
+    /// # Standard Sections
+    ///
+    /// 4.2, see MPI_Pack
+    fn pack_into<Buf>(&self, inbuf: &Buf, outbuf: &mut [u8], position: Count) -> Count
+    where
+        Buf: ?Sized + Buffer,
+    {
+        let inbuf_dt = inbuf.as_datatype();
+
+        let mut position: Count = position;
+        unsafe {
+            ffi::MPI_Pack(
+                inbuf.pointer(),
+                inbuf.count(),
+                inbuf_dt.as_raw(),
+                outbuf.as_mut_ptr() as *mut _,
+                outbuf.count(),
+                &mut position,
+                self.as_raw(),
+            );
+        }
+        position
+    }
+
+    /// Unpacks an implementation-specific byte array from `pack` or `pack_into` into a buffer of a
+    /// specific datatype.
+    ///
+    /// # Standard Sections
+    ///
+    /// 4.2, see MPI_Unpack
+    unsafe fn unpack_into<Buf>(&self, inbuf: &[u8], outbuf: &mut Buf, position: Count) -> Count
+    where
+        Buf: ?Sized + BufferMut,
+    {
+        let outbuf_dt = outbuf.as_datatype();
+
+        let mut position: Count = position;
+        ffi::MPI_Unpack(
+            inbuf.as_ptr() as *const _,
+            inbuf.count(),
+            &mut position,
+            outbuf.pointer_mut(),
+            outbuf.count(),
+            outbuf_dt.as_raw(),
+            self.as_raw(),
+        );
+        position
     }
 }
 
