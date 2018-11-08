@@ -532,7 +532,7 @@ pub trait Communicator: AsRaw<Raw = MPI_Comm> {
             "dims and periods must be parallel, equal-sized arrays"
         );
 
-        let periods: Vec<_> = periods.iter().map(|x| *x as i32).collect();
+        let periods: IntArray = periods.iter().map(|x| *x as i32).collect();
 
         unsafe {
             let mut comm_cart = ffi::RSMPI_COMM_NULL;
