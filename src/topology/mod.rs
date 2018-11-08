@@ -25,9 +25,9 @@ use std::{mem, process};
 
 use conv::ConvUtil;
 
-use super::Count;
 #[cfg(not(msmpi))]
 use super::Tag;
+use super::{Count, IntArray};
 
 use datatype::traits::*;
 use ffi;
@@ -545,6 +545,45 @@ pub trait Communicator: AsRaw<Raw = MPI_Comm> {
                 &mut comm_cart,
             );
             CartesianCommunicator::from_raw(comm_cart)
+        }
+    }
+
+    /// Gets the target rank of this rank as-if
+    /// [`create_cartesian_communicator`](#method.create_cartesian_communicator) had been called
+    /// with `dims`, `periods`, and `reorder = true`.
+    ///
+    /// Returns `None` if the local process would not particate in the new CartesianCommunciator.
+    ///
+    /// * `dims` - array of spatial extents for the cartesian space
+    /// * `periods` - Must match length of `dims`. For i in 0 to dims.len(), periods[i] indicates if
+    ///     axis i is periodic. i.e. if true, the element at dims[i] - 1 in axis i is a neighbor of
+    ///     element 0 in axis i
+    ///
+    /// # Standard section
+    /// 7.5.8 (MPI_Cart_map)
+    fn cartesian_map(&self, dims: &[Count], periods: &[bool]) -> Option<Rank> {
+        assert_eq!(
+            dims.len(),
+            periods.len(),
+            "dims and periods must be parallel, equal-sized arrays"
+        );
+
+        let periods: IntArray = periods.iter().map(|x| *x as i32).collect();
+
+        unsafe {
+            let mut new_rank = ffi::MPI_UNDEFINED;
+            ffi::MPI_Cart_map(
+                self.as_raw(),
+                dims.count(),
+                dims.as_ptr(),
+                periods.as_ptr(),
+                &mut new_rank,
+            );
+            if new_rank == ffi::MPI_UNDEFINED {
+                None
+            } else {
+                Some(new_rank)
+            }
         }
     }
 
