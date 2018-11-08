@@ -6,21 +6,28 @@ use super::super::{datatype::traits::*, ffi, raw::traits::*, Count, IntArray};
 use super::{AsCommunicator, Communicator, IntoTopology, Rank, UserCommunicator};
 use ffi::MPI_Comm;
 
-/// Contains arrays describing the layout of the CartesianCommunicator.
+/// Contains arrays describing the layout of the
+/// [`CartesianCommunicator`](struct.CartesianCommunicator.html).
 ///
-/// For i in CartesianCommunicator::num_dimensions, dims[i] is the extent of the array in dimension
-/// i, periods[i] is true if dimension i is periodic, and coords[i] is the cartesian coordinate for
-/// the local rank in dimension i.
+/// dims[i] is the extent of the array in axis i, periods[i] is true if axis i is periodic, and
+/// coords[i] is the cartesian coordinate for the local rank in axis i.
+///
+/// Each array, when received from a method in
+/// [`CartesianCommunicator`](struct.CartesianCommunicator.html), will be of length
+/// [`num_dimensions`](struct.CartesianCommunicator.html#method.num_dimensions).
 pub struct CartesianLayout {
-    /// dims[i] is the extent of the array in dimension i
+    /// dims[i] is the extent of the array in axis i
     pub dims: Vec<Count>,
-    /// periods[i] is true if dimension i is periodic
+    /// periods[i] is true if axis i is periodic, meaning an element at dims[i] - 1 in axis i
+    /// is neighbors with element 0 in axis i
     pub periods: Vec<bool>,
-    /// coords[i] is the cartesian coordinate for the local rank in dimension i
+    /// coords[i] is the cartesian coordinate for the local rank in axis i
     pub coords: Vec<Count>,
 }
 
-/// A user-defined communicator with a Cartesian topology.
+/// A `CartesianCommunicator` is an MPI communicator object where ranks are laid out in an
+/// n-dimensional cartesian space. This gives ranks neighbors in each of those dimensions, and MPI
+/// is able to optimize the layout of these ranks to improve physical locality.
 ///
 /// # Standard Section(s)
 ///
@@ -28,8 +35,17 @@ pub struct CartesianLayout {
 pub struct CartesianCommunicator(pub(crate) UserCommunicator);
 
 impl CartesianCommunicator {
-    /// If the raw value is the null handle, or the communicator is not a CartesianCommunicator,
-    /// returns `None`.
+    /// Given a valid `MPI_Comm` handle in `raw`, returns a `CartesianCommunicator` value if, and
+    /// only if:
+    /// - The handle is not `MPI_COMM_NULL`
+    /// - The topology of the communicator is `MPI_CART`
+    ///
+    /// Otherwise returns None.
+    ///
+    /// Behavior is undefined if `raw` is not a valid `MPI_Comm` handle.
+    ///
+    /// # Parameters
+    /// * `raw` - Handle to a valid `MPI_Comm` object
     pub unsafe fn from_raw(raw: MPI_Comm) -> Option<CartesianCommunicator> {
         UserCommunicator::from_raw(raw).and_then(|comm| match comm.into_topology() {
             IntoTopology::Cartesian(c) => Some(c),
@@ -42,7 +58,15 @@ impl CartesianCommunicator {
         })
     }
 
-    /// Wraps the raw value without checking for null handle
+    /// Creates a `CartesianCommunicator` from `raw`.
+    ///
+    /// Behavior is undefined if `raw`:
+    /// * Is not a valid `MPI_Comm` value
+    /// * Is equal to `MPI_COMM_NULL`
+    /// * Does not have the `MPI_CART` topology
+    ///
+    /// # Parameters
+    /// * `raw` - Handle to a valid `MPI_CART` `MPI_Comm` object
     pub unsafe fn from_raw_unchecked(raw: MPI_Comm) -> CartesianCommunicator {
         debug_assert_ne!(raw, ffi::RSMPI_COMM_NULL);
         CartesianCommunicator(UserCommunicator::from_raw_unchecked(raw))
@@ -63,7 +87,16 @@ impl CartesianCommunicator {
     /// Returns the topological structure of the Cartesian communicator
     ///
     /// Behavior is undefined if `dims`, `periods`, and `coords` are not of length
-    /// `CartesianCommunicator::num_dimensions()`
+    /// [`num_dimensions`](#method.num_dimensions).
+    ///
+    /// Prefer [`get_layout_into`](#method.get_layout_into)
+    ///
+    /// # Parameters
+    /// * `dims` - array of spatial extents for the cartesian space
+    /// * `periods` - Must match length of `dims`. `periods[i]` indicates if axis i is periodic.
+    ///     i.e. if true, the element at `dims[i] - 1` in axis i is a neighbor of element 0 in axis
+    ///     i
+    /// * `coords` - `coords[i]` is the location offset in axis i of this rank
     ///
     /// # Standard section(s)
     /// 7.5.5 (MPI_Cart_get)
@@ -96,6 +129,16 @@ impl CartesianCommunicator {
     }
 
     /// Returns the topological structure of the Cartesian communicator
+    ///
+    /// Panics if `dims`, `periods`, and `coords` are not of length
+    /// [`num_dimensions`](#method.num_dimensions).
+    ///
+    /// # Parameters
+    /// * `dims` - array of spatial extents for the cartesian space
+    /// * `periods` - Must match length of `dims`. `periods[i]` indicates if axis i is periodic.
+    ///     i.e. if true, the element at `dims[i] - 1` in axis i is a neighbor of element 0 in axis
+    ///     i
+    /// * `coords` - `coords[i]` is the location offset in axis i of this rank
     ///
     /// # Standard section(s)
     /// 7.5.5 (MPI_Cart_get)
@@ -147,19 +190,22 @@ impl CartesianCommunicator {
 
     /// Converts a set of cartesian coordinates to its rank in the CartesianCommunicator.
     ///
-    /// This function does not check whether coords is a valid input - the caller is responsible for
-    /// ensuring the arguments are in range. You should prefer
-    /// [coordinates_to_rank](struct.CartesianCommunicator.html#method.coordinates_to_rank)
-    /// unless you have a reason to use the unchecked version.
+    /// Behavior is undefined if `coords` is not of length
+    /// [`num_dimensions`](#method.num_dimensions).
     ///
-    /// `coords.len()` must equal `CartesianCommunicator::num_dimensions()`.
+    /// Coordinates in periodic axes that are out of range are shifted back into the dimensions of
+    /// the communiactor.
     ///
-    /// For dimension i with `periods[i] == true`, if the coordinate, `coords[i]`, is out of range,
-    /// it is shifted back to the interval `0 <= coords[i] < dims[i]`. Out-of-range coordinates are
-    /// erroneous for non-periodic dimensions.
+    /// Behavior is undefined if any coordinates in non-periodic axes are outside the dimensions of
+    /// the communicator.
+    ///
+    /// Prefer [`coordinates_to_rank`](#method.coordinates_to_rank)
+    ///
+    /// # Parameters
+    /// * `coords` - `coords[i]` is a location offset in axis i
     ///
     /// # Standard section(s)
-    /// 7.5.5
+    /// 7.5.5 (MPI_Cart_rank)
     pub unsafe fn coordinates_to_rank_unchecked(&self, coords: &[Count]) -> Rank {
         let mut rank: Rank = mem::uninitialized();
         ffi::MPI_Cart_rank(self.as_raw(), coords.as_ptr(), &mut rank);
@@ -168,16 +214,19 @@ impl CartesianCommunicator {
 
     /// Converts a set of cartesian coordinates to its rank in the CartesianCommunicator.
     ///
-    /// This function panics on invalid input.
+    /// Panics if `coords` is not of length [`num_dimensions`](#method.num_dimensions).
     ///
-    /// `coords.len()` must equal `CartesianCommunicator::num_dimensions()`.
+    /// Coordinates in periodic axes that are out of range are shifted back into the dimensions of
+    /// the communiactor.
     ///
-    /// For dimension i with `periods[i] == true`, if the coordinate, `coords[i]`, is out of range,
-    /// it is shifted back to the interval `0 <= coords[i] < dims[i]`. Out-of-range coordinates are
-    /// erroneous for non-periodic dimensions.
+    /// Panics if any coordinates in non-periodic axes are outside the dimensions of the
+    /// communicator.
+    ///
+    /// # Parameters
+    /// * `coords` - `coords[i]` is a location offset in axis i
     ///
     /// # Standard section(s)
-    /// 7.5.5
+    /// 7.5.5 (MPI_Cart_rank)
     pub fn coordinates_to_rank(&self, coords: &[Count]) -> Rank {
         let num_dims = self
             .num_dimensions()
@@ -187,7 +236,7 @@ impl CartesianCommunicator {
         assert_eq!(
             num_dims,
             coords.len(),
-            "The coordinates slice must be the same size as the number of dimension in the \
+            "The coordinates slice must be the same length as the number of dimension in the \
              CartesianCommunicator"
         );
 
@@ -216,20 +265,34 @@ impl CartesianCommunicator {
         unsafe { self.coordinates_to_rank_unchecked(coords) }
     }
 
-    /// Receives into `coords` the cartesian coordinates of `rank`. Input `rank` is not checked.
-    /// This method is unsafe if `rank` is not between `0` and `Communicator::size()`.
+    /// Receives into `coords` the cartesian coordinates of `rank`.
+    ///
+    /// Behavior is undefined if `rank` is not a non-negative value less than
+    /// [`size`](trait.Communicator.html#method.size).
+    ///
+    /// Prefer [`rank_to_coordinates_into`](#method.rank_to_coordinates_into)
+    ///
+    /// # Parameters
+    /// * `rank` - A rank in the communicator
+    /// * `coords` - `coords[i]` is the cartesian coordinate of `rank` in axis i
     ///
     /// # Standard section(s)
-    /// 7.5.5
+    /// 7.5.5 (MPI_Cart_coords)
     pub unsafe fn rank_to_coordinates_into_unchecked(&self, rank: Rank, coords: &mut [Count]) {
         ffi::MPI_Cart_coords(self.as_raw(), rank, coords.count(), coords.as_mut_ptr());
     }
 
     /// Receives into `coords` the cartesian coordinates of `rank`.
-    /// This method panics if `rank` is not between `0` and `Communicator::size()`.
+    ///
+    /// Panics if `rank` is not a non-negative value less than
+    /// [`size`](trait.Communicator.html#method.size).
+    ///
+    /// # Parameters
+    /// * `rank` - A rank in the communicator
+    /// * `coords` - `coords[i]` is the cartesian coordinate of `rank` in axis i
     ///
     /// # Standard section(s)
-    /// 7.5.5
+    /// 7.5.5 (MPI_Cart_coords)
     pub fn rank_to_coordinates_into(&self, rank: Rank, coords: &mut [Count]) {
         assert!(
             rank >= 0 && rank < self.size(),
@@ -241,11 +304,17 @@ impl CartesianCommunicator {
         unsafe { self.rank_to_coordinates_into_unchecked(rank, coords) }
     }
 
-    /// Returns an array of `coords`, of size `CartesianCommunicator::num_dimensions()`, with the
-    /// cartesian coordinates of `rank`.
+    /// Returns an array of `coords` with the cartesian coordinates of `rank`, where `coords[i]` is
+    /// the cartesian coordinate of `rank` in axis i.
+    ///
+    /// Panics if `rank` is not a non-negative value less than
+    /// [`size`](trait.Communicator.html#method.size).
+    ///
+    /// # Parameters
+    /// * `rank` - A rank in the communicator
     ///
     /// # Standard section(s)
-    /// 7.5.5
+    /// 7.5.5 (MPI_Cart_coords)
     pub fn rank_to_coordinates(&self, rank: Rank) -> Vec<Count> {
         let mut coords = vec![
             0;
@@ -263,10 +332,17 @@ impl CartesianCommunicator {
     /// direction by `displacement` units for the first returned rank and in the positive direction
     /// for the second returned rank.
     ///
-    /// Behavior is undefined if `dimension` is outside the range `[0,ndims)`
+    /// Behavior is undefined if `dimension` is not of length
+    /// [`num_dimensions`](#method.num_dimensions).
+    ///
+    /// Prefer [`shift`](#method.shift)
+    ///
+    /// # Parameters
+    /// * `dimension` - which axis to shift in
+    /// * `displacement` - what offset to shift by in each direction
     ///
     /// # Standard section(s)
-    /// 7.5.6
+    /// 7.5.6 (MPI_Cart_shift)
     pub unsafe fn shift_unchecked(
         &self,
         dimension: Count,
@@ -301,10 +377,14 @@ impl CartesianCommunicator {
     /// direction by `displacement` units for the first returned rank and in the positive direction
     /// for the second returned rank.
     ///
-    /// Panics if `dimension` is outside the range `[0,ndims)`
+    /// Panics if `dimension` is not of length [`num_dimensions`](#method.num_dimensions).
+    ///
+    /// # Parameters
+    /// * `dimension` - which axis to shift in
+    /// * `displacement` - what offset to shift by in each direction
     ///
     /// # Standard section(s)
-    /// 7.5.6
+    /// 7.5.6 (MPI_Cart_shift)
     pub fn shift(&self, dimension: Count, displacement: Count) -> (Option<Rank>, Option<Rank>) {
         assert!(
             dimension >= 0,
@@ -325,11 +405,16 @@ impl CartesianCommunicator {
     /// Partitions an existing Cartesian communicator into a new Cartesian communicator in a lower
     /// dimension.
     ///
-    /// The size of `retain` is not checked. The behavior is not defined if `retain.len()` is not
-    /// greater than or equal to `CartesianCommunicator::num_dimensions()`.
+    /// Behavior is undefined if `retain` is not of length
+    /// [`num_dimensions`](#method.num_dimensions).
+    ///
+    /// Prefer [`subgroup`](#method.subgroup)
+    ///
+    /// # Parameters
+    /// * `retain` - if `retain[i]` is true, then axis i is retained in the new communicator
     ///
     /// # Standard section(s)
-    /// 7.5.7
+    /// 7.5.7 (MPI_Cart_sub)
     pub unsafe fn subgroup_unchecked(&self, retain: &[bool]) -> CartesianCommunicator {
         let retain_int: IntArray = retain.iter().map(|b| *b as _).collect();
 
@@ -341,8 +426,13 @@ impl CartesianCommunicator {
     /// Partitions an existing Cartesian communicator into a new Cartesian communicator in a lower
     /// dimension.
     ///
+    /// Panics if `retain` is not of length [`num_dimensions`](#method.num_dimensions).
+    ///
+    /// # Parameters
+    /// * `retain` - if `retain[i]` is true, then axis i is retained in the new communicator
+    ///
     /// # Standard section(s)
-    /// 7.5.7
+    /// 7.5.7 (MPI_Cart_sub)
     pub fn subgroup(&self, retain: &[bool]) -> CartesianCommunicator {
         assert_eq!(
             self.num_dimensions(),

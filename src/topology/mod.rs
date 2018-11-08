@@ -516,10 +516,18 @@ pub trait Communicator: AsRaw<Raw = MPI_Comm> {
         }
     }
 
-    /// Create a Cartesian Communicator
+    /// Creates a communicator with ranks laid out in a multi-dimensional space, allowing for easy
+    /// neighbor-to-neighbor communication, while providing MPI with information to allow it to
+    /// better optimize the physical locality of ranks that are logically close.
+    ///
+    /// * `dims` - array of spatial extents for the cartesian space
+    /// * `periods` - Must match length of `dims`. For i in 0 to dims.len(), periods[i] indicates if
+    ///     axis i is periodic. i.e. if true, the element at dims[i] - 1 in axis i is a neighbor of
+    ///     element 0 in axis i
+    /// * `reorder` - If true, MPI may re-order ranks in the new communicator.
     ///
     /// # Standard section(s)
-    /// 7.5.1
+    /// 7.5.1 (MPI_Cart_create)
     fn create_cartesian_communicator(
         &self,
         dims: &[Count],
