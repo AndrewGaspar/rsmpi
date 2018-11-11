@@ -15,7 +15,9 @@ where
     let packed = comm.pack(a);
 
     let mut new_b = unsafe { std::mem::uninitialized() };
-    comm.unpack_into(&packed, &mut new_b, 0);
+    unsafe {
+        comm.unpack_into(&packed, &mut new_b, 0);
+    }
 
     assert_eq!(b, &new_b);
 }
