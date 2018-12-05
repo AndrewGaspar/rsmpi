@@ -71,20 +71,19 @@ install:
   - if [ "$TRAVIS_OS_NAME" = "windows" ]; then export PATH="${HOME}/.cargo/bin:${MSMPI_BIN}${PATH:+":${PATH}"}"; fi
   # Global set-up
   - cargo install --force cargo-mpirun
-  - if [ "$TRAVIS_RUST_VERSION" = "nightly" ]; then
-      cargo install --force clippy;
-    fi
+  - rustup component add clippy
 
 script:
+  - CARGO_FLAGS=
+  - if [ "$TRAVIS_OS_NAME" = "windows" ]; then CARGO_FLAGS=--no-default-features; fi
+  # Always build at least once without default-features
   - env RUSTFLAGS="--deny warnings" cargo build -v --no-default-features
-  # Don't build with default features on Windows
-  - if [ "$TRAVIS_OS_NAME" != "windows" ]; then env RUSTFLAGS="--deny warnings" cargo build -v; fi
-  - if [ "$TRAVIS_OS_NAME" != "windows" ]; then env RUSTFLAGS="--deny warnings" cargo test --all -v; fi
-  - if [ "$TRAVIS_OS_NAME" = "windows" ]; then env RUSTFLAGS="--deny warnings" cargo test --all -v --no-default-features; fi
+  # Then build with just CARGO_FLAGS - no-op on Windows
+  - env RUSTFLAGS="--deny warnings" cargo build -v $CARGO_FLAGS
+  # Run tests on the default configuration
+  - env RUSTFLAGS="--deny warnings" cargo test --all -v $CARGO_FLAGS
   - env RUSTFLAGS="--deny warnings" sh ci/run-examples.sh
-  - if [ "$TRAVIS_RUST_VERSION" = "nightly" ]; then
-      env RUSTFLAGS="--deny warnings" cargo clippy -v;
-    fi
+  - env RUSTFLAGS="--deny warnings" cargo clippy -v $CARGO_FLAGS
 
 before_deploy:
   # Login to cates.io
