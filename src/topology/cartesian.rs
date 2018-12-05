@@ -228,7 +228,7 @@ impl CartesianCommunicator {
     /// # Standard section(s)
     /// 7.5.5 (MPI_Cart_rank)
     pub fn coordinates_to_rank(&self, coords: &[Count]) -> Rank {
-        let num_dims = self
+        let num_dims: usize = self
             .num_dimensions()
             .value_as()
             .expect("Received unexpected value from MPI_Cartdim_get");
@@ -242,22 +242,27 @@ impl CartesianCommunicator {
 
         let layout = self.get_layout();
 
-        for i in 0..num_dims {
-            if !layout.periods[i] {
+        for (((i, &coord), &period), &dim) in coords
+            .iter()
+            .enumerate()
+            .zip(layout.periods.iter())
+            .zip(layout.dims.iter())
+        {
+            if !period {
                 assert!(
-                    coords[i] > 0,
+                    coord > 0,
                     "The non-periodic coordinate (coords[{}] = {}) must be greater than 0.",
                     i,
-                    coords[i]
+                    coord
                 );
                 assert!(
-                    coords[i] <= layout.dims[i],
+                    coord <= dim,
                     "The non-period coordinate (coords[{}] = {}) must be within the bounds of the \
                      CartesianCoordinator (dims[{}] = {})",
                     i,
-                    coords[i],
+                    coord,
                     i,
-                    layout.dims[i]
+                    dim
                 );
             }
         }

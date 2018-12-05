@@ -354,7 +354,7 @@ impl UserDatatype {
     }
 
     /// Creates a DatatypeRef from this datatype object.
-    pub fn as_ref<'a>(&'a self) -> DatatypeRef<'a> {
+    pub fn as_ref(&self) -> DatatypeRef {
         unsafe { DatatypeRef::from_raw(self.as_raw()) }
     }
 }
@@ -640,7 +640,7 @@ impl UncommittedUserDatatype {
     }
 
     /// Creates an UncommittedDatatypeRef from this datatype object.
-    pub fn as_ref<'a>(&'a self) -> UncommittedDatatypeRef<'a> {
+    pub fn as_ref(&self) -> UncommittedDatatypeRef {
         unsafe { UncommittedDatatypeRef::from_raw(self.as_raw()) }
     }
 }
