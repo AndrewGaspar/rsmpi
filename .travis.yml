@@ -71,7 +71,12 @@ install:
   - if [ "$TRAVIS_OS_NAME" = "windows" ]; then export PATH="${HOME}/.cargo/bin:${MSMPI_BIN}${PATH:+":${PATH}"}"; fi
   # Global set-up
   - cargo install --force cargo-mpirun
-  - rustup component add clippy
+  - if [ "$TRAVIS_RUST_VERSION" != "nightly" ]; then
+      rustup component add clippy
+    else
+      rustup component add clippy ||
+        cargo install --git https://github.com/rust-lang/rust-clippy/ --force clippy;
+    fi
 
 script:
   - CARGO_FLAGS=
