@@ -28,9 +28,13 @@
 //!   - Cancellation, `MPI_Test_cancelled()`
 
 use std::cell::Cell;
+use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::{self, MaybeUninit};
+use std::pin::Pin;
 use std::ptr;
+use std::rc::Rc;
+use std::task::{Context, Poll};
 
 use crate::ffi;
 use crate::ffi::{MPI_Request, MPI_Status};
@@ -78,7 +82,9 @@ unsafe impl<'a, S: Scope<'a>> AsRaw for Request<'a, S> {
 
 impl<'a, S: Scope<'a>> Drop for Request<'a, S> {
     fn drop(&mut self) {
-        panic!("request was dropped without being completed");
+        if self.request != unsafe { ffi::RSMPI_REQUEST_NULL } {
+            panic!("request was dropped without being completed");
+        }
     }
 }
 
@@ -211,6 +217,46 @@ impl<'a, S: Scope<'a>> Request<'a, S> {
         unsafe {
             let (request, _) = self.into_raw();
             Request::from_raw(request, scope)
+        }
+    }
+}
+
+impl<'a, S: Scope<'a>> Unpin for Request<'a, S> {}
+
+impl<'a, S: Scope<'a>> Future for Request<'a, S> {
+    type Output = Status;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        assert_ne!(
+            unsafe { ffi::RSMPI_REQUEST_NULL },
+            self.request,
+            "mpi::request::Request must not be polled after it has returned Ready"
+        );
+
+        let mut status = MaybeUninit::uninit();
+        let mut request = self.as_raw();
+
+        let (_, flag) = unsafe {
+            with_uninitialized(|flag| ffi::MPI_Test(&mut request, flag, status.as_mut_ptr()))
+        };
+        if flag != 0 {
+            self.request = unsafe { ffi::RSMPI_REQUEST_NULL };
+            unsafe {
+                self.scope.unregister();
+            }
+            Poll::Ready(Status::from_raw(unsafe { status.assume_init() }))
+        } else {
+            // MPI offers no standard progress notification mechanism for MPI_Request, so we
+            // should always wake the request.
+            //
+            // TODO: @AndrewGaspar: MS-MPI has a routine named "MSMPI_Request_set_apc" which may
+            // provide a notification mechanism, but it's unclear to me if polling of a request
+            // is necessary for progress in MS-MPI or not. The existence of the routine makes me
+            // assume that MS-MPI has a separate progress thread.
+            //
+            // It's possible other implementations also have notification mechanisms.
+            cx.waker().wake_by_ref();
+            Poll::Pending
         }
     }
 }
@@ -400,4 +446,69 @@ where
         num_requests: Default::default(),
         phantom: Default::default(),
     })
+}
+
+/// TODO
+#[derive(Debug, Clone)]
+pub struct AsyncScope<'a> {
+    num_requests: Rc<Cell<usize>>,
+    phantom: PhantomData<Cell<&'a ()>>, // Cell needed to ensure 'a is invariant
+}
+
+unsafe impl<'a, 'b> Scope<'a> for AsyncScope<'a> {
+    fn register(&self) {
+        self.num_requests.set(self.num_requests.get() + 1);
+    }
+
+    unsafe fn unregister(&self) {
+        self.num_requests.set(
+            self.num_requests
+                .get()
+                .checked_sub(1)
+                .expect("unregister has been called more times than register"),
+        );
+    }
+}
+
+/// Used to create a [`LocalScope`](struct.LocalScope.html) with an async routine.
+///
+/// The function creates a `LocalScope` and then passes it into the given
+/// closure as an argument.
+///
+/// For safety reasons, all variables and buffers associated with a request
+/// must exist *outside* the scope with which the request is registered.
+///
+/// It is typically used like this:
+///
+/// ```
+/// /* declare variables and buffers here ... */
+/// mpi::request::async_scope(|scope| {
+///     /* perform sends and/or receives using 'scope' */
+/// });
+/// /* at end of scope, panic if there are requests that have not yet completed */
+/// ```
+///
+/// # Examples
+///
+/// See `examples/immediate.rs`
+pub async fn async_scope<'a, F, R: Future>(f: F) -> R::Output
+where
+    F: FnOnce(AsyncScope<'a>) -> R,
+{
+    let num_requests = Rc::new(Cell::new(0));
+
+    let result = f(AsyncScope {
+        num_requests: num_requests.clone(),
+        phantom: Default::default(),
+    })
+    .await;
+
+    if num_requests.get() != 0 {
+        panic!(
+            "at least one request was dropped without being completed. {}",
+            num_requests.get()
+        );
+    }
+
+    result
 }

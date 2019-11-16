@@ -17,7 +17,7 @@ use std::{fmt, ptr};
 
 use conv::ConvUtil;
 
-use super::{Count, Tag};
+use crate::{Count, Tag};
 
 use crate::ffi;
 use crate::ffi::{MPI_Message, MPI_Status};
