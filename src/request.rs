@@ -31,6 +31,7 @@ use std::cell::Cell;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::mem::{self, MaybeUninit};
+use std::os::raw::c_int;
 use std::pin::Pin;
 use std::ptr;
 use std::rc::Rc;
@@ -41,7 +42,7 @@ use crate::ffi::{MPI_Request, MPI_Status};
 
 use crate::point_to_point::Status;
 use crate::raw::traits::*;
-use crate::with_uninitialized;
+use crate::{with_uninitialized, with_uninitialized2};
 
 /// Check if the request is `MPI_REQUEST_NULL`.
 fn is_null(request: MPI_Request) -> bool {
@@ -82,9 +83,7 @@ unsafe impl<'a, S: Scope<'a>> AsRaw for Request<'a, S> {
 
 impl<'a, S: Scope<'a>> Drop for Request<'a, S> {
     fn drop(&mut self) {
-        if self.request != unsafe { ffi::RSMPI_REQUEST_NULL } {
-            panic!("request was dropped without being completed");
-        }
+        panic!("request was dropped without being completed");
     }
 }
 
@@ -219,44 +218,78 @@ impl<'a, S: Scope<'a>> Request<'a, S> {
             Request::from_raw(request, scope)
         }
     }
+
+    /// Returns the status of the request
+    pub fn get_status(&self) -> (bool, Status) {
+        // let mut flag = MaybeUninit::uninit();
+        // let mut status = MaybeUninit::uninit();
+
+        let (_, flag, status) = unsafe {
+            with_uninitialized2(|flag, status| {
+                ffi::MPI_Request_get_status(self.as_raw(), flag, status)
+            })
+        };
+
+        (flag != 0, Status::from_raw(status))
+    }
+
+    /// Convert Request into a future
+    pub fn into_future(self) -> RequestFuture<'a, S> {
+        RequestFuture {
+            request: Some(self),
+        }
+    }
 }
 
 impl<'a, S: Scope<'a>> Unpin for Request<'a, S> {}
 
-impl<'a, S: Scope<'a>> Future for Request<'a, S> {
-    type Output = Status;
+/// A future for an MPI request.
+#[derive(Debug)]
+pub struct RequestFuture<'a, S: Scope<'a>> {
+    request: Option<Request<'a, S>>,
+}
+
+impl<'a, S: Scope<'a>> Future for RequestFuture<'a, S> {
+    type Output = Result<Status, Status>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        assert_ne!(
-            unsafe { ffi::RSMPI_REQUEST_NULL },
-            self.request,
-            "mpi::request::Request must not be polled after it has returned Ready"
-        );
+        let request = self
+            .request
+            .take()
+            .expect("rsmpi critical error: Polled RequestFuture after completion");
 
-        let mut status = MaybeUninit::uninit();
-        let mut request = self.as_raw();
-
-        let (_, flag) = unsafe {
-            with_uninitialized(|flag| ffi::MPI_Test(&mut request, flag, status.as_mut_ptr()))
-        };
-        if flag != 0 {
-            self.request = unsafe { ffi::RSMPI_REQUEST_NULL };
-            unsafe {
-                self.scope.unregister();
+        match request.test() {
+            Ok(status) => {
+                if status.0.MPI_ERROR == ffi::MPI_SUCCESS as c_int {
+                    Poll::Ready(Ok(status))
+                } else {
+                    Poll::Ready(Err(status))
+                }
             }
-            Poll::Ready(Status::from_raw(unsafe { status.assume_init() }))
-        } else {
-            // MPI offers no standard progress notification mechanism for MPI_Request, so we
-            // should always wake the request.
-            //
-            // TODO: @AndrewGaspar: MS-MPI has a routine named "MSMPI_Request_set_apc" which may
-            // provide a notification mechanism, but it's unclear to me if polling of a request
-            // is necessary for progress in MS-MPI or not. The existence of the routine makes me
-            // assume that MS-MPI has a separate progress thread.
-            //
-            // It's possible other implementations also have notification mechanisms.
-            cx.waker().wake_by_ref();
-            Poll::Pending
+            Err(request) => {
+                // MPI offers no standard progress notification mechanism for MPI_Request, so we
+                // should always wake the request.
+                //
+                // TODO: @AndrewGaspar: MS-MPI has a routine named "MSMPI_Request_set_apc" which may
+                // provide a notification mechanism, but it's unclear to me if polling of a request
+                // is necessary for progress in MS-MPI or not. The existence of the routine makes me
+                // assume that MS-MPI has a separate progress thread.
+                // Notes about MSMPI_Request_set_apc:
+                // - MS-MPI must still be polled. This limits the usefulness to some degree since
+                //   the poll loop can't go completely to sleep.
+                // - The callback routine does not take a user-pointer argument, but you can work
+                //   around this by allocating the user context at a known offset of the MPI_Status.
+                //   e.g. `#[repr(C)] struct MyStatus { status: MPI_Status, context: MyContext }`.
+                //   This way you can just cast the MPI_Status pointer to the MyStatus pointer and
+                //   get access to the request-specific context.
+                // - APCs only run when a thread is in an alertable state.
+                //   See: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-queueuserapc
+                //
+                // It's possible other implementations also have notification mechanisms.
+                self.request = Some(request);
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
         }
     }
 }

@@ -899,7 +899,7 @@ where
 ///
 /// 3.2.5
 #[derive(Copy, Clone)]
-pub struct Status(MPI_Status);
+pub struct Status(pub(crate) MPI_Status);
 
 impl Status {
     /// Construct a `Status` value from the raw MPI type

@@ -37,9 +37,11 @@ fn main() {
 
                             vec![
                                 comm.process_at_rank(lrank)
-                                    .immediate_receive_into(scope.clone(), left),
+                                    .immediate_receive_into(scope.clone(), left)
+                                    .into_future(),
                                 comm.process_at_rank(rrank)
-                                    .immediate_receive_into(scope.clone(), right),
+                                    .immediate_receive_into(scope.clone(), right)
+                                    .into_future(),
                             ]
                         },
                     );
@@ -58,9 +60,11 @@ fn main() {
 
                         vec![
                             comm.process_at_rank(lrank)
-                                .immediate_send(scope.clone(), send),
+                                .immediate_send(scope.clone(), send)
+                                .into_future(),
                             comm.process_at_rank(rrank)
-                                .immediate_send(scope.clone(), send),
+                                .immediate_send(scope.clone(), send)
+                                .into_future(),
                         ]
                     });
 
