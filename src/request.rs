@@ -424,7 +424,20 @@ unsafe impl Scope<'static> for StaticScope {
 #[derive(Debug)]
 pub struct LocalScope<'a> {
     num_requests: Cell<usize>,
-    phantom: PhantomData<Cell<&'a ()>>, // Cell needed to ensure 'a is invariant
+    phantom: PhantomData<Cell<&'a ()>>, // Cell needed to ensure 'a is invariant,
+}
+
+impl<'a> LocalScope<'a> {
+    /// Creates a new `LocalScope`. The caller is responsible for ensuring the scope outlives all
+    /// `Request`s that are attached to it.
+    ///
+    /// Prefer `mpi::define_scope!` or `mpi::scope`.
+    pub unsafe fn new() -> Self {
+        Self {
+            num_requests: Default::default(),
+            phantom: Default::default(),
+        }
+    }
 }
 
 impl<'a> Drop for LocalScope<'a> {
@@ -475,10 +488,8 @@ pub fn scope<'a, F, R>(f: F) -> R
 where
     F: FnOnce(&LocalScope<'a>) -> R,
 {
-    f(&LocalScope {
-        num_requests: Default::default(),
-        phantom: Default::default(),
-    })
+    crate::define_scope!(scope);
+    f(scope)
 }
 
 /// TODO
